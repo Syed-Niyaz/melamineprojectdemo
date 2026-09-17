@@ -199,12 +199,8 @@ export default function QuotationPreviewPage() {
               </tbody>
             </table>
           </div>
-          <div className="border-t pt-4 mt-4 space-y-2 max-w-xs ml-auto">
-            <div className="flex justify-between text-sm"><span>Subtotal</span><span className="font-medium">SAR {quotation.subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-sm text-red-500"><span>Discount</span><span>-SAR {quotation.totalDiscount.toFixed(2)}</span></div>
-            <div className="flex justify-between text-sm"><span>Net Amount</span><span className="font-bold">SAR {quotation.netAmount.toFixed(2)}</span></div>
-            <div className="flex justify-between text-sm text-muted-foreground"><span>VAT (15%)</span><span>SAR {quotation.vat.toFixed(2)}</span></div>
-            <div className="flex justify-between text-lg font-bold pt-2 border-t text-blue-700"><span>Grand Total</span><span>SAR {quotation.grandTotal.toFixed(2)}</span></div>
+          <div className="border-t pt-4 mt-4 max-w-xs ml-auto">
+            <div className="flex justify-between text-lg font-bold text-blue-700"><span>Grand Total</span><span>SAR {quotation.grandTotal.toFixed(2)}</span></div>
           </div>
         </CardContent>
       </Card>

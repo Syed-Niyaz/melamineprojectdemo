@@ -333,14 +333,12 @@ export function getQuotationPDFBlob(data: QuotationPDFData): Blob {
  * - On desktop browsers (where browser security prohibits direct file injection into third-party web apps),
  *   it downloads the PDF invoice file immediately and opens WhatsApp with the complete itemized invoice breakdown.
  */
-export async function shareQuotationViaWhatsApp(data: QuotationPDFData, phone?: string) {
+export function shareQuotationViaWhatsApp(data: QuotationPDFData, phone?: string) {
   const rawPhone = phone ? phone.replace(/\D/g, '') : ''
   const cleanPhone = rawPhone.length >= 7
     ? (rawPhone.startsWith('0') ? `966${rawPhone.slice(1)}` : (rawPhone.startsWith('966') ? rawPhone : `966${rawPhone}`))
     : ''
     
-  const invoiceLink = typeof window !== 'undefined' ? `${window.location.origin}/invdownload` : ''
-  
   // Format each line item for WhatsApp
   const itemLines = data.items.map((item, idx) => {
     const discountStr = item.discount > 0 ? ` (${item.discount}% off)` : ''
@@ -348,17 +346,17 @@ export async function shareQuotationViaWhatsApp(data: QuotationPDFData, phone?: 
   })
 
   const displayedItemLines = itemLines.length > 20
-    ? [...itemLines.slice(0, 15), `... and ${itemLines.length - 15} more items (see attached PDF)`]
+    ? [...itemLines.slice(0, 15), `... and ${itemLines.length - 15} more items`]
     : itemLines
 
   const messageLines = [
-    `*📋 OFFICIAL INVOICE COPY: ${data.id || 'QT-2024'}*`,
+    `*📋 OFFICIAL QUOTATION: ${data.id || 'QT-2024'}*`,
     `🏢 *Waleed Mohammed Alsuwat Company Holding*`,
     `👤 *Customer:* ${data.customer.name}`,
     `📅 *Date:* ${data.date}`,
     `💳 *Payment Terms:* ${data.paymentTerms}`,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `*📦 INVOICE ITEMS (${data.items.length} Products):*`,
+    `*📦 QUOTATION ITEMS (${data.items.length} Products):*`,
     ``,
     displayedItemLines.join('\n\n'),
     ``,
@@ -367,9 +365,6 @@ export async function shareQuotationViaWhatsApp(data: QuotationPDFData, phone?: 
     `*VAT (15%):* SAR ${data.vat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     `💰 *GRAND TOTAL:* *SAR ${data.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}*`,
     `━━━━━━━━━━━━━━━━━━━━━━━━`,
-    `📥 *Download Official Signed PDF Invoice:*`,
-    `${invoiceLink}`,
-    ``,
     `*Terms & Conditions:*`,
     `• Supplied as per approved sample.`,
     `• Payment Terms: ${data.paymentTerms}.`,
@@ -378,40 +373,41 @@ export async function shareQuotationViaWhatsApp(data: QuotationPDFData, phone?: 
   ]
 
   const message = messageLines.join('\n')
-
-  // Generate real PDF File
-  const pdfBlob = getQuotationPDFBlob(data)
-  const filename = `Invoice_${data.id || 'QT-2024'}_${data.customer.name.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
-  const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' })
-
-  // 1. If device supports direct file sharing (Mobile phones, tablets, native share targets), share the real PDF file directly!
-  if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-    try {
-      await navigator.share({
-        files: [pdfFile],
-        title: `Invoice ${data.id}`,
-        text: message,
-      })
-      return
-    } catch (err: any) {
-      if (err.name === 'AbortError') return
-    }
-  }
-
-  // 2. Desktop Web: Download the PDF file directly + open WhatsApp Web
   const encodedMsg = encodeURIComponent(message)
-  const waUrl = cleanPhone
-    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`
-    : `https://api.whatsapp.com/send?text=${encodedMsg}`
 
   if (typeof window !== 'undefined') {
-    window.open(waUrl, '_blank')
-  }
+    // Detect if the device is a mobile device to route correctly
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    
+    let waUrl = ''
+    if (isMobile) {
+      // Direct deep link to WhatsApp App on iOS/Android
+      waUrl = cleanPhone
+        ? `whatsapp://send?phone=${cleanPhone}&text=${encodedMsg}`
+        : `whatsapp://send?text=${encodedMsg}`
+        
+      // Fallback to wa.me if deep link fails (wa.me handles App Store routing)
+      setTimeout(() => {
+        const waMeUrl = cleanPhone
+          ? `https://wa.me/${cleanPhone}?text=${encodedMsg}`
+          : `https://wa.me/?text=${encodedMsg}`
+        window.location.href = waMeUrl
+      }, 300)
+    } else {
+      // Direct link to WhatsApp Web on Desktop
+      waUrl = cleanPhone
+        ? `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMsg}`
+        : `https://web.whatsapp.com/send?text=${encodedMsg}`
+    }
 
-  // Trigger download of the PDF file to user's downloads tray
-  try {
-    generateQuotationPDF(data)
-  } catch (err) {
-    console.error('PDF auto-download error:', err)
+    // Open WhatsApp directly
+    window.open(waUrl, isMobile ? '_self' : '_blank')
+
+    // Trigger download of the PDF file to user's downloads tray simultaneously
+    try {
+      generateQuotationPDF(data)
+    } catch (err) {
+      console.error('PDF auto-download error:', err)
+    }
   }
 }

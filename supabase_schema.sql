@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS public.products (
     arabic_description TEXT,
     category TEXT,
     unit_price DECIMAL(10, 2) NOT NULL,
+    image_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
@@ -84,6 +85,7 @@ CREATE TABLE IF NOT EXISTS public.product_variants (
     product_id UUID REFERENCES public.products(id) ON DELETE CASCADE,
     color TEXT NOT NULL,
     stock_quantity INTEGER NOT NULL DEFAULT 100,
+    image_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
@@ -177,6 +179,9 @@ BEGIN
   ELSE
     assigned_role := 'salesperson'::public.user_role;
   END IF;
+
+  -- Ensure the role is synchronized back to user metadata for robust client auth
+  new.raw_user_meta_data := coalesce(new.raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('role', assigned_role::text);
 
   INSERT INTO public.profiles (id, full_name, email, role, created_at, updated_at)
   VALUES (

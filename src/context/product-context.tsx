@@ -8,6 +8,7 @@ export type ProductVariant = {
   color: string
   stock: number
   sales?: number
+  image_url?: string
 }
 
 export type Product = {
@@ -173,7 +174,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) return
 
     try {
-      const { data: dbProducts, error } = await supabase
+      let { data: dbProducts, error } = await supabase
         .from('products')
         .select(`
           id,
@@ -186,9 +187,32 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           product_variants (
             id,
             color,
-            stock_quantity
+            stock_quantity,
+            image_url
           )
         `)
+
+      if (error) {
+        // Fallback without product_variants(image_url) if column not in DB schema
+        const fallbackRes = await supabase
+          .from('products')
+          .select(`
+            id,
+            item_no,
+            description,
+            arabic_description,
+            category,
+            unit_price,
+            image_url,
+            product_variants (
+              id,
+              color,
+              stock_quantity
+            )
+          `)
+        dbProducts = fallbackRes.data
+        error = fallbackRes.error
+      }
 
       if (dbProducts && !error && dbProducts.length > 0) {
         const formatted: Product[] = dbProducts.map((p: any) => {
@@ -210,6 +234,7 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
                   color: v.color,
                   stock: v.stock_quantity,
                   sales: 25,
+                  image_url: v.image_url || undefined,
                 }))
               : (initMatch?.variants || [
                   { color: 'WHITE', stock: 50, sales: 20 },
@@ -267,32 +292,63 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Sync state across local tabs and components instantaneously
+  useEffect(() => {
+    const handleSync = () => {
+      const saved = localStorage.getItem('global_products_v2')
+      if (saved) {
+        try {
+          setProducts(JSON.parse(saved))
+        } catch (e) {}
+      }
+    }
+    window.addEventListener('storage', handleSync)
+    window.addEventListener('stock_updated', handleSync)
+    return () => {
+      window.removeEventListener('storage', handleSync)
+      window.removeEventListener('stock_updated', handleSync)
+    }
+  }, [])
+
   const deductStock = async (productId: string, color: string, qty: number) => {
-    setProducts(prevProducts => 
-      prevProducts.map(p => {
-        if (p.id !== productId) return p
+    setProducts(prevProducts => {
+      const updated = prevProducts.map(p => {
+        const isProductMatch = String(p.id).toLowerCase() === String(productId).toLowerCase() ||
+                               String(p.sku).toLowerCase() === String(productId).toLowerCase() ||
+                               String(p.name_en).toLowerCase() === String(productId).toLowerCase()
+        if (!isProductMatch) return p
         return {
           ...p,
           variants: p.variants.map(v => {
-            if (v.color !== color) return v
+            const isColorMatch = String(v.color).trim().toUpperCase() === String(color).trim().toUpperCase()
+            if (!isColorMatch) return v
+            const newStock = Math.max(0, v.stock - Number(qty))
             return {
               ...v,
-              stock: Math.max(0, v.stock - qty),
-              sales: (v.sales || 0) + qty
+              stock: newStock,
+              sales: (v.sales || 0) + Number(qty)
             }
           })
         }
       })
-    )
+      localStorage.setItem('global_products_v2', JSON.stringify(updated))
+      setTimeout(() => window.dispatchEvent(new Event('stock_updated')), 50)
+      return updated
+    })
 
     const supabase = createClient()
     if (supabase) {
       try {
-        // Find variant and deduct stock in Supabase
-        const targetProduct = products.find(p => p.id === productId)
-        const targetVariant = targetProduct?.variants.find(v => v.color === color)
+        const targetProduct = products.find(p =>
+          String(p.id).toLowerCase() === String(productId).toLowerCase() ||
+          String(p.sku).toLowerCase() === String(productId).toLowerCase() ||
+          String(p.name_en).toLowerCase() === String(productId).toLowerCase()
+        )
+        const targetVariant = targetProduct?.variants.find(v =>
+          String(v.color).trim().toUpperCase() === String(color).trim().toUpperCase()
+        )
         if (targetVariant?.id) {
-          const newStock = Math.max(0, targetVariant.stock - qty)
+          const newStock = Math.max(0, targetVariant.stock - Number(qty))
           await supabase.from('product_variants').update({ stock_quantity: newStock }).eq('id', targetVariant.id)
         }
       } catch (err) {

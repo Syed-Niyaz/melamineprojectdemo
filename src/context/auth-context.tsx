@@ -92,19 +92,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    let isMounted = true
+
     // Get initial session
-    supabase.auth.getUser().then((res: { data: { user: User | null } }) => {
+    supabase.auth.getUser().then(async (res: { data: { user: User | null } }) => {
       const initialUser = res.data?.user ?? null
+      if (!isMounted) return
       setUser(initialUser)
       if (initialUser) {
-        fetchProfile(initialUser).finally(() => setLoading(false))
-      } else {
-        setLoading(false)
+        await fetchProfile(initialUser)
       }
+      if (isMounted) setLoading(false)
     })
 
     // Listen to auth state changes (login, logout, token refresh, password recovery)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event: string, session: { user: User | null } | null) => {
+      if (!isMounted) return
       const currentUser = session?.user ?? null
       setUser(currentUser)
       if (currentUser) {
@@ -112,10 +115,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setProfile(null)
       }
-      setLoading(false)
+      if (isMounted) setLoading(false)
     })
 
     return () => {
+      isMounted = false
       subscription.unsubscribe()
     }
   }, [])

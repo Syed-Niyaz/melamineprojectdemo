@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { useLang } from '@/context/lang-context'
 import { useProducts, Product } from '@/context/product-context'
 import { createClient } from '@/lib/supabase/client'
+import { ImageUpload } from '@/components/ui/image-upload'
 
 const CATEGORIES = ['All Categories', 'Dinner Plates', 'Bowls', 'Platters', 'Serving', 'Trays', 'Accessories']
 
@@ -28,6 +29,8 @@ export default function AdminProductsPage() {
   const [colorFilter, setColorFilter] = useState('All Colors')
   const [isAddingProduct, setIsAddingProduct] = useState(false)
   const [addVariantProduct, setAddVariantProduct] = useState<any>(null)
+  const [newProductImage, setNewProductImage] = useState<string>('')
+  const [newVariantImage, setNewVariantImage] = useState<string>('')
   
   // Extract all unique colors from products for the dropdown dynamically
   const allColors = Array.from(new Set(products.flatMap((p: Product) => p.variants.map(v => v.color))))
@@ -163,7 +166,7 @@ export default function AdminProductsPage() {
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Add New Product</h2>
-              <button onClick={() => setIsAddingProduct(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+              <button onClick={() => { setIsAddingProduct(false); setNewProductImage(''); }} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -222,20 +225,16 @@ export default function AdminProductsPage() {
                   
                   {/* Upload zone */}
                   <div className="col-span-1 sm:col-span-2">
-                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 block">Upload Image for this Color</label>
-                    <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors cursor-pointer bg-slate-50 dark:bg-slate-800/50">
-                      <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center mb-3">
-                        <ImageIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Click to upload or drag and drop</p>
-                      <p className="text-xs text-slate-500 mt-1">PNG, JPG, WEBP (max. 5MB)</p>
-                    </div>
+                    <ImageUpload 
+                      label="Upload Image for this Color" 
+                      onUploaded={(url) => setNewProductImage(url)} 
+                    />
                   </div>
                 </div>
               </div>
             </div>
             <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 bg-slate-50 dark:bg-slate-800/50">
-              <Button variant="outline" onClick={() => setIsAddingProduct(false)} className="bg-white font-semibold text-slate-700">Cancel</Button>
+              <Button variant="outline" onClick={() => { setIsAddingProduct(false); setNewProductImage(''); }} className="bg-white font-semibold text-slate-700">Cancel</Button>
               <Button className="bg-blue-700 hover:bg-blue-800 text-white font-semibold shadow-sm px-6" onClick={async () => {
                 const name_en = (document.getElementById('add-name-en') as HTMLInputElement)?.value || '';
                 const name_ar = (document.getElementById('add-name-ar') as HTMLInputElement)?.value || '';
@@ -263,7 +262,7 @@ export default function AdminProductsPage() {
                     arabic_description: name_ar,
                     category: category,
                     unit_price: price,
-                    image_url: 'https://placehold.co/400x400/f5f0eb/8b7355?text=' + encodeURIComponent(name_en),
+                    image_url: newProductImage || ('https://placehold.co/400x400/f5f0eb/8b7355?text=' + encodeURIComponent(name_en)),
                   })
                   .select()
                   .single()
@@ -289,6 +288,7 @@ export default function AdminProductsPage() {
                 
                 await refreshProducts();
                 setIsAddingProduct(false);
+                setNewProductImage('');
               }}>
                 <Plus className="w-4 h-4 mr-2" /> Add Product
               </Button>
@@ -306,7 +306,7 @@ export default function AdminProductsPage() {
                 <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Add Color Variant</h2>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">To: {addVariantProduct.name_en} ({addVariantProduct.sku})</p>
               </div>
-              <button onClick={() => setAddVariantProduct(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 bg-white dark:bg-slate-800 rounded-full p-1.5 shadow-sm border border-slate-200 dark:border-slate-700">
+              <button onClick={() => { setAddVariantProduct(null); setNewVariantImage(''); }} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 bg-white dark:bg-slate-800 rounded-full p-1.5 shadow-sm border border-slate-200 dark:border-slate-700">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -351,19 +351,15 @@ export default function AdminProductsPage() {
                 
                 {/* Upload zone */}
                 <div className="col-span-1 sm:col-span-2">
-                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 block">Upload Image for this Color</label>
-                  <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors cursor-pointer bg-slate-50 dark:bg-slate-800/50">
-                    <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-full flex items-center justify-center mb-3">
-                      <ImageIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Click to upload or drag and drop</p>
-                    <p className="text-xs text-slate-500 mt-1">PNG, JPG, WEBP (max. 5MB)</p>
-                  </div>
+                  <ImageUpload 
+                    label="Upload Image for this Color" 
+                    onUploaded={(url) => setNewVariantImage(url)} 
+                  />
                 </div>
               </div>
             </div>
             <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 bg-slate-50 dark:bg-slate-800/50">
-              <Button variant="outline" onClick={() => setAddVariantProduct(null)} className="bg-white font-semibold text-slate-700">Cancel</Button>
+              <Button variant="outline" onClick={() => { setAddVariantProduct(null); setNewVariantImage(''); }} className="bg-white font-semibold text-slate-700">Cancel</Button>
               <Button className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm px-6" onClick={async () => {
                 const color = (document.getElementById('variant-color') as HTMLSelectElement)?.value || '';
                 const stock = parseInt((document.getElementById('variant-stock') as HTMLInputElement)?.value || '0');
@@ -382,21 +378,34 @@ export default function AdminProductsPage() {
                 }
 
                 const supabase = createClient()
-                const { error: variantError } = await supabase
+                let { error: variantError } = await supabase
                   .from('product_variants')
                   .insert({
                     product_id: addVariantProduct.id,
                     color: color,
-                    stock_quantity: stock
+                    stock_quantity: stock,
+                    image_url: newVariantImage || null,
                   })
+
+                if (variantError) {
+                  const fallbackRes = await supabase
+                    .from('product_variants')
+                    .insert({
+                      product_id: addVariantProduct.id,
+                      color: color,
+                      stock_quantity: stock,
+                    })
+                  variantError = fallbackRes.error
+                }
 
                 if (variantError) {
                   alert('Failed to add variant: ' + variantError.message);
                   return;
                 }
                 
-                await refreshProducts();
+                if (refreshProducts) await refreshProducts();
                 setAddVariantProduct(null);
+                setNewVariantImage('');
               }}>
                 <Plus className="w-4 h-4 mr-2" /> Save Variant
               </Button>

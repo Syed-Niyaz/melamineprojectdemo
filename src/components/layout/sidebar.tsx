@@ -42,7 +42,7 @@ export function Sidebar({ userRole }: { userRole: string }) {
     <aside className="w-64 bg-[#0f1623] text-slate-300 h-full flex flex-col hidden md:flex shrink-0 print:hidden">
 
       {/* ── Logo ── */}
-      <div className={cn('px-5 py-5 border-b border-white/[0.06]', isRtl ? 'text-right' : '')}>
+      <Link href={userRole === 'admin' ? '/admin' : '/dashboard'} className={cn('px-5 py-5 border-b border-white/[0.06] block hover:bg-white/[0.02] transition-colors', isRtl ? 'text-right' : '')}>
         <div className={cn('flex items-center gap-3', isRtl ? 'flex-row-reverse' : '')}>
           <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/40 shrink-0">
             <Zap className="w-5 h-5 text-white" />
@@ -52,7 +52,7 @@ export function Sidebar({ userRole }: { userRole: string }) {
             <p className="text-[10px] text-slate-500 font-medium tracking-widest uppercase mt-0.5">OrderFlow</p>
           </div>
         </div>
-      </div>
+      </Link>
 
       {/* ── Nav ── */}
       <div className="flex-1 py-5 px-3 space-y-0.5 overflow-y-auto">

@@ -181,20 +181,21 @@ function InvoiceDownloadContent() {
   const rawItems = (quotation.items && quotation.items.length > 0) ? quotation.items : DEFAULT_INVOICE.items
 
   const formattedItems = rawItems.map((item: any) => {
-    const name = item.product?.name_en || item.name || 'Melamine Item'
-    const sku = item.product?.sku || item.sku || 'SKU-100'
+    const name = item.product?.name_en || item.name || item.productName || 'Melamine Item'
+    const sku = item.product?.sku || item.sku || item.item_no || 'SKU-100'
 
     const isBW = (item.color || '').toUpperCase() === 'BLACK' || (item.color || '').toUpperCase() === 'WHITE'
     const p_bw = parseFloat(item.product?.price_bw || '0')
     const p_col = parseFloat(item.product?.price_colored || '0')
     const p_gen = parseFloat(item.product?.price || '0')
-    const i_price = parseFloat(item.price || '0')
-    const basePrice = (isBW ? (p_bw || p_gen) : (p_col || p_bw || p_gen)) || i_price || 25.00
+    const i_price = parseFloat(item.price || item.unitPrice || item.unit_price_snapshot || '0')
+    const basePrice = i_price || (isBW ? (p_bw || p_gen) : (p_col || p_bw || p_gen)) || 25.00
 
-    const qty = parseInt(item.qty, 10) || 1
-    const discount = parseFloat(item.discount || '0') || 0
+    const qty = parseInt(item.qty || item.quantity, 10) || 1
+    const discount = parseFloat(item.discount || item.discount_percentage || '0') || 0
     const finalUnitPrice = basePrice * (1 - discount / 100) * 1.15
-    const finalInSar = item.finalInSar ?? item.amount ?? (finalUnitPrice * qty)
+    const netLineAmount = basePrice * qty * (1 - discount / 100)
+    const finalInSar = item.finalInSar ?? (netLineAmount * 1.15)
 
     return {
       name,

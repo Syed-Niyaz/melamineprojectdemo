@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { useProducts, Product, ProductVariant } from '@/context/product-context'
 import { useLang } from '@/context/lang-context'
-import { ArrowLeft, Plus, Pencil, Eye, X, Save } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Eye, X, Save, Trash2, AlertTriangle } from 'lucide-react'
 import { ImageUpload } from '@/components/ui/image-upload'
 import { createClient } from '@/lib/supabase/client'
 
@@ -35,7 +35,7 @@ export default function AdminProductDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { isRtl } = useLang()
-  const { products, setProducts } = useProducts() as any
+  const { products, setProducts, refreshProducts } = useProducts() as any
 
   const product: Product | undefined = products.find((p: Product) => p.id === params.id)
 
@@ -43,6 +43,8 @@ export default function AdminProductDetailPage() {
   const [editVariant, setEditVariant] = useState<ProductVariant | null>(null)
   const [viewVariant, setViewVariant] = useState<ProductVariant | null>(null)
   const [editProductOpen, setEditProductOpen] = useState(false)
+  const [deleteConfirmStep, setDeleteConfirmStep] = useState(0) // 0=closed, 1=first confirm, 2=second confirm
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Image URLs captured from the upload component
   const [addVariantImageUrl, setAddVariantImageUrl] = useState('')
@@ -66,35 +68,54 @@ export default function AdminProductDetailPage() {
     if (!editVariant) return
     const qty = (document.getElementById('ev-stock') as HTMLInputElement)?.value
     const newStock = parseInt(qty) || 0
+    const updatedImage = editVariantImageUrl || editVariant.image_url
 
-    // Build updated product
-    const updatedImage = editVariantImageUrl || undefined
-
-    setProducts((prev: Product[]) => prev.map(p => {
+    // Build updated products list for React state & localStorage
+    const updatedProducts = products.map((p: Product) => {
       if (p.id !== product.id) return p
       return {
         ...p,
-        // If a new image was uploaded for this variant, update image_url too
-        ...(updatedImage ? { image_url: updatedImage } : {}),
         variants: p.variants.map(v =>
-          v.color === editVariant.color ? { ...v, stock: newStock } : v
+          v.color === editVariant.color ? { ...v, stock: newStock, image_url: updatedImage } : v
         ),
       }
-    }))
+    })
+    setProducts(updatedProducts)
+    localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
 
-    // Persist image_url to Supabase if uploaded
-    if (updatedImage) {
-      try {
-        const supabase = createClient()
-        if (supabase) {
-          await supabase
-            .from('products')
-            .update({ image_url: updatedImage })
-            .eq('id', product.id)
+    // Persist to Supabase DB
+    try {
+      const supabase = createClient()
+      if (supabase) {
+        if (editVariant.id) {
+          let { error } = await supabase
+            .from('product_variants')
+            .update({ stock_quantity: newStock, image_url: updatedImage || null })
+            .eq('id', editVariant.id)
+          if (error) {
+            await supabase
+              .from('product_variants')
+              .update({ stock_quantity: newStock })
+              .eq('id', editVariant.id)
+          }
+        } else {
+          let { error } = await supabase
+            .from('product_variants')
+            .update({ stock_quantity: newStock, image_url: updatedImage || null })
+            .eq('product_id', product.id)
+            .ilike('color', editVariant.color)
+          if (error) {
+            await supabase
+              .from('product_variants')
+              .update({ stock_quantity: newStock })
+              .eq('product_id', product.id)
+              .ilike('color', editVariant.color)
+          }
         }
-      } catch (e) {
-        console.error('Failed to update image_url in Supabase:', e)
+        if (refreshProducts) await refreshProducts()
       }
+    } catch (e) {
+      console.error('Failed to update variant in Supabase:', e)
     }
 
     setEditVariantImageUrl('')
@@ -109,33 +130,78 @@ export default function AdminProductDetailPage() {
 
     const uploadedUrl = addVariantImageUrl || undefined
 
-    setProducts((prev: Product[]) => prev.map(p => {
+    const newVariant: ProductVariant = {
+      color: colorSel,
+      stock,
+      sales,
+      image_url: uploadedUrl,
+    }
+
+    // Update React State & localStorage immediately
+    const updatedProducts = products.map((p: Product) => {
       if (p.id !== product.id) return p
       return {
         ...p,
-        // Update product-level image if this is first variant or explicitly uploaded
-        ...(uploadedUrl ? { image_url: uploadedUrl } : {}),
-        variants: [...p.variants, { color: colorSel, stock, sales }],
+        variants: [...p.variants, newVariant],
       }
-    }))
+    })
+    setProducts(updatedProducts)
+    localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
 
-    // Persist image_url to Supabase if uploaded
-    if (uploadedUrl) {
-      try {
-        const supabase = createClient()
-        if (supabase) {
+    // Persist to Supabase DB
+    try {
+      const supabase = createClient()
+      if (supabase) {
+        let { error } = await supabase
+          .from('product_variants')
+          .insert({
+            product_id: product.id,
+            color: colorSel,
+            stock_quantity: stock,
+            image_url: uploadedUrl || null,
+          })
+        if (error) {
           await supabase
-            .from('products')
-            .update({ image_url: uploadedUrl })
-            .eq('id', product.id)
+            .from('product_variants')
+            .insert({
+              product_id: product.id,
+              color: colorSel,
+              stock_quantity: stock,
+            })
         }
-      } catch (e) {
-        console.error('Failed to update image_url in Supabase:', e)
+        if (refreshProducts) await refreshProducts()
       }
+    } catch (e) {
+      console.error('Failed to add variant to Supabase:', e)
     }
 
     setAddVariantImageUrl('')
     setAddVariantOpen(false)
+  }
+
+  const handleDeleteProduct = async () => {
+    setIsDeleting(true)
+    try {
+      // 1. Remove from React state and localStorage immediately
+      const updatedProducts = products.filter((p: Product) => p.id !== product.id)
+      setProducts(updatedProducts)
+      localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
+
+      // 2. Delete from Supabase (variants first to respect FK, then product)
+      const supabase = createClient()
+      if (supabase) {
+        await supabase.from('product_variants').delete().eq('product_id', product.id)
+        await supabase.from('products').delete().eq('id', product.id)
+      }
+
+      router.push('/admin/products')
+    } catch (e) {
+      console.error('Failed to delete product:', e)
+      alert('Failed to delete product. Please try again.')
+    } finally {
+      setIsDeleting(false)
+      setDeleteConfirmStep(0)
+    }
   }
 
   const handleSaveProductDetails = async () => {
@@ -232,6 +298,14 @@ export default function AdminProductDetailPage() {
                     <Pencil className="w-3.5 h-3.5" />
                     <span>Edit</span>
                   </button>
+                  <button
+                    onClick={() => setDeleteConfirmStep(1)}
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold border border-slate-200 dark:border-slate-700"
+                    title="Delete Product"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </button>
                 </div>
                 <p className="text-slate-400 text-sm font-arabic mt-0.5">{product.name_ar}</p>
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -286,7 +360,7 @@ export default function AdminProductDetailPage() {
               {/* Image */}
               <div className="h-40 bg-[#f5f0eb] dark:bg-slate-800 flex items-center justify-center relative">
                 <img
-                  src={`${product.base_image_url}_${v.color.toLowerCase().replace(/ /g, '_')}.png`}
+                  src={v.image_url || product.image_url}
                   alt={v.color}
                   className="max-h-full max-w-full object-contain p-4"
                   onError={(e) => { (e.target as HTMLImageElement).src = product.image_url }}
@@ -452,7 +526,7 @@ export default function AdminProductDetailPage() {
             <div className="p-6">
               <div className="h-48 bg-[#f5f0eb] dark:bg-slate-800 rounded-xl mb-5 flex items-center justify-center overflow-hidden">
                 <img
-                  src={`${product.base_image_url}_${viewVariant.color.toLowerCase().replace(/ /g, '_')}.png`}
+                  src={viewVariant.image_url || product.image_url}
                   alt={viewVariant.color}
                   className="max-h-full max-w-full object-contain"
                   onError={(e) => { (e.target as HTMLImageElement).src = product.image_url }}
@@ -550,6 +624,63 @@ export default function AdminProductDetailPage() {
               <Button onClick={handleSaveProductDetails} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6">
                 <Save className="w-4 h-4 mr-2" /> Save Changes
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Product Confirmation Modal ── */}
+      {deleteConfirmStep > 0 && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-6 flex flex-col items-center text-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-950/40 flex items-center justify-center">
+                <AlertTriangle className="w-8 h-8 text-red-500" />
+              </div>
+
+              {deleteConfirmStep === 1 ? (
+                <>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">Delete Product?</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    You are about to permanently delete <strong className="text-slate-800 dark:text-slate-200">{product.name_en}</strong> and all its color variants.
+                    This action <strong className="text-red-600">cannot be undone</strong>.
+                  </p>
+                  <div className="flex gap-3 w-full mt-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setDeleteConfirmStep(0)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold"
+                      onClick={() => setDeleteConfirmStep(2)}
+                    >
+                      Yes, Delete
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-bold text-red-600">Are you absolutely sure?</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    This will <strong className="text-red-600">permanently delete</strong> the product <strong className="text-slate-800 dark:text-slate-200">{product.name_en}</strong> along with all {product.variants.length} color variant(s) and their stock data from the database.
+                  </p>
+                  <div className="flex gap-3 w-full mt-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setDeleteConfirmStep(0)} disabled={isDeleting}>
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold"
+                      onClick={handleDeleteProduct}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? (
+                        <span className="flex items-center gap-2"><span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block" /> Deleting…</span>
+                      ) : (
+                        <span className="flex items-center gap-2"><Trash2 className="w-4 h-4" /> Delete Forever</span>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

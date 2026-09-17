@@ -9,16 +9,27 @@ import { useRouter } from 'next/navigation'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { isRtl } = useLang()
-  const { role, loading } = useAuth()
+  const { role, profile, loading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && role !== 'admin') {
+    // Only redirect if auth loading is complete and profile is fetched and user is NOT admin
+    if (!loading && profile && role !== 'admin') {
       router.replace('/dashboard')
     }
-  }, [role, loading, router])
+  }, [role, profile, loading, router])
 
-  if (!loading && role !== 'admin') {
+  if (loading || !profile) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="text-center space-y-2">
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Verifying Admin Access...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (role !== 'admin') {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="text-center space-y-2">

@@ -111,16 +111,18 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addCustomer = async (c: Customer) => {
-    // Optimistic UI update
-    setCustomers(prev => [c, ...prev])
-    localStorage.setItem('global_customers', JSON.stringify([c, ...customers]))
+    // Optimistic UI update with temporary ID
+    const tempId = c.id || crypto.randomUUID?.() || Date.now().toString()
+    const tempCustomer = { ...c, id: tempId }
+    setCustomers(prev => [tempCustomer, ...prev])
 
     const supabase = createClient()
     if (supabase) {
       try {
         const { data: { user } } = await supabase.auth.getUser()
-        await supabase.from('customers').insert({
-          id: c.id.length > 10 ? c.id : undefined,
+        
+        // Let the database generate the UUID by omitting id
+        const { data, error } = await supabase.from('customers').insert({
           name: c.name,
           address: c.address,
           mobile_no: c.mobile_no,
@@ -128,9 +130,43 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
           vat_no: c.vat_no || c.vat,
           cr_no: c.cr_no || c.cr,
           created_by: user?.id,
-        })
+        }).select().single()
+
+        if (error) {
+          console.error('Failed to insert customer to Supabase:', error)
+          // Revert optimistic update on failure
+          setCustomers(prev => prev.filter(existing => existing.id !== tempId))
+          return
+        }
+
+        if (data) {
+          // Replace temp customer with real database record
+          const realCustomer: Customer = {
+            id: data.id,
+            name: data.name,
+            contact_person: data.name,
+            mobile_no: data.mobile_no || '',
+            email: data.email || '',
+            address: data.address || '',
+            vat_no: data.vat_no || '',
+            cr_no: data.cr_no || '',
+            orders: 0
+          }
+          setCustomers(prev => prev.map(existing => existing.id === tempId ? realCustomer : existing))
+          
+          // Update localStorage safely
+          const currentLocal = localStorage.getItem('global_customers')
+          if (currentLocal) {
+            try {
+              const parsed = JSON.parse(currentLocal)
+              const updated = parsed.map((existing: Customer) => existing.id === tempId ? realCustomer : existing)
+              localStorage.setItem('global_customers', JSON.stringify(updated))
+            } catch (e) {}
+          }
+        }
       } catch (err) {
-        console.error('Failed to insert customer to Supabase:', err)
+        console.error('Unexpected error inserting customer:', err)
+        setCustomers(prev => prev.filter(existing => existing.id !== tempId))
       }
     }
   }

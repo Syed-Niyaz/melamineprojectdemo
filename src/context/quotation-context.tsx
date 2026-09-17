@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { updateQuotationStatusInDB, deleteQuotationInDB } from '@/app/actions/quotation-actions'
 
 export type QuotationItem = {
   id?: string
@@ -105,7 +106,10 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
           created_at,
           customers (
             id,
-            name
+            name,
+            mobile_no,
+            email,
+            address
           ),
           profiles (
             id,
@@ -119,7 +123,17 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
             unit_price_snapshot,
             discount_percentage,
             discount_amount,
-            line_amount
+            line_amount,
+            product_variants (
+              id,
+              color,
+              products (
+                id,
+                item_no,
+                description,
+                arabic_description
+              )
+            )
           )
         `)
         .order('created_at', { ascending: false })
@@ -127,10 +141,21 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
       if (dbQuotations && !error && dbQuotations.length > 0) {
         const formatted: Quotation[] = dbQuotations.map((q: any) => {
           const qNumber = q.quotation_number ? `QT-${1000 + q.quotation_number}` : q.id.substring(0, 8).toUpperCase()
+          const cust = q.customers || {}
+          const customerObj = {
+            id: cust.id || q.customer_id,
+            name: cust.name || 'Customer',
+            contact_person: cust.name || 'Customer',
+            contact: cust.name || 'Customer',
+            mobile_no: cust.mobile_no || '',
+            email: cust.email || '',
+            address: cust.address || '',
+          }
           return {
             id: qNumber,
             customer_id: q.customer_id,
-            customerName: q.customers?.name || 'Customer',
+            customerName: cust.name || 'Customer',
+            customer: customerObj,
             salesperson_id: q.salesperson_id,
             salesperson: q.profiles?.full_name || 'Sales Representative',
             date: q.created_at ? new Date(q.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
@@ -142,7 +167,33 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
             paymentTerms: q.payment_terms || '',
             deliveryTerms: q.delivery_terms || '',
             remarks: q.remarks || '',
-            items: q.quotation_items || [],
+            items: (q.quotation_items || []).map((qi: any, idx: number) => {
+              const variant = qi.product_variants || {}
+              const product = variant.products || {}
+              return {
+                id: qi.id || (idx + 1),
+                name: product.description || 'Product Item',
+                sku: product.item_no || '',
+                color: variant.color || '',
+                qty: qi.quantity || 1,
+                quantity: qi.quantity || 1,
+                price: Number(qi.unit_price_snapshot) || 0,
+                unitPrice: Number(qi.unit_price_snapshot) || 0,
+                unit_price_snapshot: Number(qi.unit_price_snapshot) || 0,
+                discount: Number(qi.discount_percentage) || 0,
+                discount_percentage: Number(qi.discount_percentage) || 0,
+                discount_amount: Number(qi.discount_amount) || 0,
+                amount: Number(qi.line_amount) || 0,
+                line_amount: Number(qi.line_amount) || 0,
+                product: {
+                  name_en: product.description || 'Product Item',
+                  name_ar: product.arabic_description || '',
+                  sku: product.item_no || '',
+                  price_bw: Number(qi.unit_price_snapshot) || 0,
+                  price_colored: Number(qi.unit_price_snapshot) || 0,
+                },
+              }
+            }),
             created_at: q.created_at,
           }
         })
@@ -283,6 +334,107 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
         return
       }
 
+      // ── Insert quotation_items into the database ──
+      if (q.items && q.items.length > 0) {
+        for (const item of q.items) {
+          try {
+            const product = item.product || ({} as any)
+            const color = (item.color || product.variants?.[0]?.color || 'WHITE').toUpperCase()
+            const isBW = color === 'BLACK' || color === 'WHITE'
+            const unitPrice = item.unitPrice || item.unit_price_snapshot || (isBW ? product.price_bw : product.price_colored) || 0
+            const qty = item.qty || item.quantity || 1
+            const discountPct = Number(item.discount || item.discount_percentage || 0)
+            const discountAmt = unitPrice * qty * (discountPct / 100)
+            const lineAmount = item.line_amount || (unitPrice * qty - discountAmt)
+
+            // Try to find or create the product_variant_id
+            let variantId: string | null = null
+
+            // First, check if product exists in the DB by sku/item_no
+            const productSku = product.sku || product.item_no || ''
+            if (productSku) {
+              const { data: dbProduct } = await supabase
+                .from('products')
+                .select('id')
+                .eq('item_no', productSku)
+                .maybeSingle()
+
+              if (dbProduct) {
+                // Look for existing variant with this color
+                const { data: dbVariant } = await supabase
+                  .from('product_variants')
+                  .select('id')
+                  .eq('product_id', dbProduct.id)
+                  .ilike('color', color)
+                  .maybeSingle()
+
+                if (dbVariant) {
+                  variantId = dbVariant.id
+                } else {
+                  // Create the variant
+                  const { data: newVariant } = await supabase
+                    .from('product_variants')
+                    .insert({
+                      product_id: dbProduct.id,
+                      color: color,
+                      stock_quantity: 100,
+                    })
+                    .select('id')
+                    .single()
+                  if (newVariant) variantId = newVariant.id
+                }
+              }
+            }
+
+            // If no variant found, create a placeholder product + variant so FK is valid
+            if (!variantId) {
+              const placeholderName = product.name_en || product.name || `Product ${product.sku || 'Unknown'}`
+              const { data: newProduct } = await supabase
+                .from('products')
+                .insert({
+                  item_no: productSku || `LOCAL-${product.id || Date.now()}`,
+                  description: placeholderName,
+                  arabic_description: product.name_ar || placeholderName,
+                  category: product.category || 'General',
+                  unit_price: unitPrice,
+                })
+                .select('id')
+                .single()
+
+              if (newProduct) {
+                const { data: newVariant } = await supabase
+                  .from('product_variants')
+                  .insert({
+                    product_id: newProduct.id,
+                    color: color,
+                    stock_quantity: 100,
+                  })
+                  .select('id')
+                  .single()
+                if (newVariant) variantId = newVariant.id
+              }
+            }
+
+            if (variantId) {
+              const { error: itemErr } = await supabase.from('quotation_items').insert({
+                quotation_id: insertedQuotation.id,
+                product_variant_id: variantId,
+                quantity: qty,
+                unit_price_snapshot: unitPrice,
+                discount_percentage: discountPct,
+                discount_amount: discountAmt,
+                line_amount: lineAmount,
+              })
+              if (itemErr) console.error('addQuotation: failed to insert quotation_item', itemErr)
+            } else {
+              console.error('addQuotation: could not resolve product_variant_id for item', item)
+            }
+          } catch (itemError) {
+            console.error('addQuotation: error inserting quotation item', itemError)
+          }
+        }
+      }
+
       // Create discount_approval record if needed
       if (q.status === 'Pending Approval' || maxDiscountPct > 25) {
         const { error: daErr } = await supabase.from('discount_approvals').insert({
@@ -309,18 +461,92 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
     setQuotations(prev => prev.map(q => q.id === id ? { ...q, status } : q))
     localStorage.setItem('global_quotations_v2', JSON.stringify(quotations.map(q => q.id === id ? { ...q, status } : q)))
 
-    const supabase = createClient()
-    if (supabase) {
-      try {
-        // If id is in QT-100X format, extract quotation_number or update by match
-        const qNum = parseInt(id.replace('QT-', '')) - 1000
-        if (!isNaN(qNum) && qNum > 0) {
-          await supabase.from('quotations').update({ status }).eq('quotation_number', qNum)
-        } else if (id.length > 20) {
-          await supabase.from('quotations').update({ status }).eq('id', id)
+    // Call server action to bypass strict RLS on UPDATE
+    await updateQuotationStatusInDB(id, status)
+
+    // ── Deduct stock only when Quotation is marked as Completed ──
+    if (status === 'Completed' || status === 'Customer Accepted') {
+      const quotation = quotations.find(q => q.id === id)
+      if (quotation?.items && quotation.items.length > 0) {
+        // 1. Update products in localStorage immediately for instant UI refresh
+        try {
+          const savedProducts = localStorage.getItem('global_products_v2')
+          if (savedProducts) {
+            const allProducts = JSON.parse(savedProducts)
+            const updatedProducts = allProducts.map((p: any) => {
+              const matchingItems = (quotation.items || []).filter((item: any) => {
+                const product = item.product || {}
+                return (
+                  String(p.id).toLowerCase() === String(product.id || '').toLowerCase() ||
+                  String(p.sku).toLowerCase() === String(product.sku || '').toLowerCase()
+                )
+              })
+              if (matchingItems.length === 0) return p
+              return {
+                ...p,
+                variants: p.variants.map((v: any) => {
+                  const match = matchingItems.find((item: any) =>
+                    String(v.color).trim().toUpperCase() === String(item.color || '').trim().toUpperCase()
+                  )
+                  if (!match) return v
+                  const qty = Number(match.qty || match.quantity || 0)
+                  return {
+                    ...v,
+                    stock: Math.max(0, v.stock - qty),
+                    sales: (v.sales || 0) + qty,
+                  }
+                }),
+              }
+            })
+            localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
+            // Notify all components using useProducts() to re-read from localStorage
+            window.dispatchEvent(new Event('stock_updated'))
+          }
+        } catch (e) {
+          console.error('updateStatus: failed to update products in localStorage', e)
         }
-      } catch (err) {
-        console.error('Failed to update quotation status in Supabase:', err)
+
+        // 2. Deduct stock in Supabase for persistence
+        const supabase = createClient()
+        if (supabase) {
+          for (const item of quotation.items) {
+            try {
+              const product = item.product || {}
+              const color = String(item.color || '').trim().toUpperCase()
+              const qty = Number(item.qty || item.quantity || 0)
+              if (!qty) continue
+
+              // Find product by SKU
+              const sku = product.sku || product.item_no || ''
+              if (!sku) continue
+
+              const { data: dbProduct } = await supabase
+                .from('products')
+                .select('id')
+                .eq('item_no', sku)
+                .maybeSingle()
+
+              if (!dbProduct) continue
+
+              const { data: dbVariant } = await supabase
+                .from('product_variants')
+                .select('id, stock_quantity')
+                .eq('product_id', dbProduct.id)
+                .ilike('color', color)
+                .maybeSingle()
+
+              if (!dbVariant) continue
+
+              const newStock = Math.max(0, (dbVariant.stock_quantity || 0) - qty)
+              await supabase
+                .from('product_variants')
+                .update({ stock_quantity: newStock })
+                .eq('id', dbVariant.id)
+            } catch (itemErr) {
+              console.error('updateStatus: failed to deduct stock for item', item, itemErr)
+            }
+          }
+        }
       }
     }
   }
@@ -329,19 +555,8 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
     setQuotations(prev => prev.filter(q => q.id !== id))
     localStorage.setItem('global_quotations_v2', JSON.stringify(quotations.filter(q => q.id !== id)))
 
-    const supabase = createClient()
-    if (supabase) {
-      try {
-        const qNum = parseInt(id.replace('QT-', '')) - 1000
-        if (!isNaN(qNum) && qNum > 0) {
-          await supabase.from('quotations').delete().eq('quotation_number', qNum)
-        } else if (id.length > 20) {
-          await supabase.from('quotations').delete().eq('id', id)
-        }
-      } catch (err) {
-        console.error('Failed to delete quotation from Supabase:', err)
-      }
-    }
+    // Call server action to bypass missing DELETE RLS policy
+    await deleteQuotationInDB(id)
   }
 
   return (

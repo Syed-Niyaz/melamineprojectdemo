@@ -4,7 +4,7 @@ import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { CheckCircle2, ChevronRight, FileText, Info, Send, User, Check, Eye, Trash2, ExternalLink, XCircle } from 'lucide-react'
+import { CheckCircle2, ChevronRight, FileText, Info, Send, User, Check, Eye, Trash2, ExternalLink, XCircle, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 import { useQuotations } from '@/context/quotation-context'
 import { useNotifications } from '@/context/notification-context'
@@ -38,24 +38,30 @@ export default function QuotationDetailsPage({ params }: { params: Promise<{ id:
   const [completedTime, setCompletedTime] = useState<string | null>(null)
   const [sentTime, setSentTime] = useState<string | null>(null)
 
+  // Delete Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [deleteStep, setDeleteStep] = useState(1)
+
   // Derive status from context (reactive)
   const status = ctxQuotation?.status ?? 'Quotation Generated'
 
   // Build display data: use context data when available, fall back to static placeholder
+  const ctxCust = (ctxQuotation as any)?.customer || {}
   const quotationData = {
     id: id,
     customer: {
-      name: ctxQuotation?.customerName ?? 'Al Muhaidib Kitchens',
-      contact: 'Khalid Al Muhaidib',
-      mobile_no: '+966 13 812 3456',
-      email: 'khalid@almuhaidib.com.sa',
-      address: 'King Fahd Road, Al Khobar 31952',
+      name: ctxCust.name || ctxQuotation?.customerName || 'Al Muhaidib Kitchens',
+      contact: ctxCust.contact_person || ctxCust.contact || ctxCust.name || ctxQuotation?.customerName || 'Khalid Al Muhaidib',
+      contact_person: ctxCust.contact_person || ctxCust.contact || ctxCust.name || ctxQuotation?.customerName || 'Khalid Al Muhaidib',
+      mobile_no: ctxCust.mobile_no || ctxCust.phone || '+966 13 812 3456',
+      email: ctxCust.email || 'khalid@almuhaidib.com.sa',
+      address: ctxCust.address || 'King Fahd Road, Al Khobar 31952',
     },
     date: ctxQuotation?.date ?? '18 Dec 2026',
     salesperson: ctxQuotation?.salesperson ?? 'Ahmad Al Rashid',
     discount: ctxQuotation?.discount ?? 0,
-    subtotal: (ctxQuotation?.grandTotal ?? 143.75) / 1.15,
-    vat: ((ctxQuotation?.grandTotal ?? 143.75) / 1.15) * 0.15,
+    subtotal: ctxQuotation?.subtotal || (ctxQuotation?.grandTotal ?? 143.75) / 1.15,
+    vat: ctxQuotation?.vat_amount || ((ctxQuotation?.grandTotal ?? 143.75) / 1.15) * 0.15,
     grandTotal: ctxQuotation?.grandTotal ?? 143.75,
     remarks: ctxQuotation?.remarks ?? '',
     items: ctxQuotation?.items ?? [
@@ -109,11 +115,24 @@ export default function QuotationDetailsPage({ params }: { params: Promise<{ id:
     }
   }
 
-  const handleDelete = () => {
-    if (confirm(`Are you sure you want to delete quotation ${id}? This action cannot be undone.`)) {
-      deleteQuotation(id)
-      router.push('/admin/quotations')
-    }
+  const handleDeleteClick = () => {
+    setIsDeleteModalOpen(true)
+    setDeleteStep(1)
+  }
+
+  const confirmDeleteStep1 = () => {
+    setDeleteStep(2)
+  }
+
+  const confirmDeleteFinal = () => {
+    deleteQuotation(id)
+    setIsDeleteModalOpen(false)
+    router.push('/admin/quotations')
+  }
+
+  const cancelDelete = () => {
+    setIsDeleteModalOpen(false)
+    setTimeout(() => setDeleteStep(1), 300) // Reset after animation
   }
 
   const handleApprove = () => {
@@ -336,19 +355,25 @@ export default function QuotationDetailsPage({ params }: { params: Promise<{ id:
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {quotationData.items.map((item: any, idx: number) => (
+              {quotationData.items.map((item: any, idx: number) => {
+                const itemQty = item.qty || item.quantity || 1
+                const itemPrice = Number(item.price || item.unitPrice || item.unit_price_snapshot || item.product?.price_bw || 0)
+                const itemDiscount = Number(item.discount || item.discount_percentage || 0)
+                const itemAmount = Number(item.amount || item.line_amount || (itemPrice * itemQty * (1 - itemDiscount / 100)))
+                return (
                 <tr key={item.id || idx} className="hover:bg-slate-50/50">
-                  <td className="px-5 py-3 text-slate-500 font-medium">{item.id || (idx + 1)}</td>
+                  <td className="px-5 py-3 text-slate-500 font-medium">{idx + 1}</td>
                   <td className="px-5 py-3">
-                    <p className="font-semibold text-slate-800 text-[13px]">{item.product?.name_en || item.name || 'Product Item'} {item.color ? `(${item.color})` : ''}</p>
-                    <p className="text-[11px] text-slate-400">{item.product?.sku || item.sku || 'SKU'}</p>
+                    <p className="font-semibold text-slate-800 text-[13px]">{item.product?.name_en || item.name || item.productName || 'Product Item'} {item.color ? `(${item.color})` : ''}</p>
+                    <p className="text-[11px] text-slate-400">{item.product?.sku || item.sku || item.item_no || ''}</p>
                   </td>
-                  <td className="px-5 py-3 text-end font-semibold text-slate-700">{item.qty || 1}</td>
-                  <td className="px-5 py-3 text-end text-slate-600">SAR {Number(item.price || item.product?.price || 0).toFixed(2)}</td>
-                  <td className="px-5 py-3 text-center text-slate-400">{item.discount > 0 ? `${item.discount}%` : '—'}</td>
-                  <td className="px-5 py-3 text-end font-bold text-slate-900">SAR {Number(item.amount || 0).toFixed(2)}</td>
+                  <td className="px-5 py-3 text-end font-semibold text-slate-700">{itemQty}</td>
+                  <td className="px-5 py-3 text-end text-slate-600">SAR {itemPrice.toFixed(2)}</td>
+                  <td className="px-5 py-3 text-center text-slate-400">{itemDiscount > 0 ? `${itemDiscount}%` : '—'}</td>
+                  <td className="px-5 py-3 text-end font-bold text-slate-900">SAR {itemAmount.toFixed(2)}</td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -493,13 +518,64 @@ export default function QuotationDetailsPage({ params }: { params: Promise<{ id:
           <p className="text-slate-500 text-xs mt-1">Permanently delete this quotation and all its data. This action cannot be undone.</p>
         </div>
         <Button 
-          onClick={handleDelete}
+          onClick={handleDeleteClick}
           variant="outline" 
           className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 font-semibold shadow-sm w-fit"
         >
           <Trash2 className="w-4 h-4 mr-2" /> Delete Quotation
         </Button>
       </div>
+
+      {/* Premium Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-5">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
+              </div>
+              
+              <h3 className="text-xl font-bold text-slate-900 mb-2">
+                {deleteStep === 1 ? 'Delete Quotation?' : 'Are you absolutely sure?'}
+              </h3>
+              
+              <p className="text-slate-500 text-[15px] leading-relaxed mb-6">
+                {deleteStep === 1 
+                  ? `You are about to delete quotation ${id}. This action will permanently remove it and all associated items.`
+                  : `This will permanently delete quotation ${id} from the database. This action cannot be undone and no recovery is possible. Click "Delete Permanently" to proceed.`
+                }
+              </p>
+
+              <div className="flex gap-3 justify-end mt-2">
+                <Button 
+                  variant="outline" 
+                  onClick={cancelDelete}
+                  className="px-5 font-semibold text-slate-600 hover:bg-slate-100 border-slate-200"
+                >
+                  Cancel
+                </Button>
+                
+                {deleteStep === 1 ? (
+                  <Button 
+                    onClick={confirmDeleteStep1}
+                    className="px-5 font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+                  >
+                    Yes, Delete
+                  </Button>
+                ) : (
+                  <Button 
+                    onClick={confirmDeleteFinal}
+                    className="px-5 font-bold bg-red-700 hover:bg-red-800 text-white shadow-md animate-pulse"
+                  >
+                    Delete Permanently
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

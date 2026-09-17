@@ -169,13 +169,16 @@ export function ProductCatalog({ initialProducts, onProceedToQuotation, onCartCh
         {filteredProducts.map(p => {
           const pAny = p as any
           const getPrice = (isBW: boolean) => { const p_bw=parseFloat(pAny.price_bw||"0"); const p_col=parseFloat(pAny.price_colored||"0"); const p_gen=parseFloat(pAny.price||"0"); const i_p=parseFloat(pAny.price as string||"0"); return (isBW ? (p_bw || p_gen) : (p_col || p_bw || p_gen)) || i_p || 0; }
-          const selectedColor = selectedColors[p.id] || p.variants[0].color
-          const variant = p.variants.find(v => v.color === selectedColor) || p.variants[0]
-          const isLowStock = variant.stock > 0 && variant.stock <= 10
-          const isOutOfStock = variant.stock === 0
+          const selectedColor = selectedColors[p.id] || p.variants?.[0]?.color || 'WHITE'
+          const variant = p.variants?.find(v => v.color === selectedColor) || p.variants?.[0]
+          const isLowStock = variant ? (variant.stock > 0 && variant.stock <= 10) : false
+          const isOutOfStock = variant ? (variant.stock === 0) : false
           
-          const imgColorSuffix = selectedColor.toLowerCase().replace(/ /g, '_')
-          const dynamicImageUrl = `${p.base_image_url}_${imgColorSuffix}.png`
+          const currentVariantImage = variant?.image_url || p.image_url || 'https://placehold.co/400x400/f5f0eb/8b7355?text=No+Image'
+
+          const currentQty = quantities[p.id] !== undefined && quantities[p.id] !== '' ? Number(quantities[p.id]) : 1
+          const availableStock = variant ? variant.stock : 0
+          const isExceedingStock = currentQty > availableStock
 
           return (
           <Card key={p.id} className="overflow-hidden flex flex-col bg-white dark:bg-slate-900 border shadow-sm rounded-xl">
@@ -183,20 +186,14 @@ export function ProductCatalog({ initialProducts, onProceedToQuotation, onCartCh
             <div className="w-full pt-4 pb-3 flex justify-center bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
               <div
                 className="h-32 w-32 relative overflow-hidden rounded-xl cursor-pointer shadow-sm border border-slate-100 dark:border-slate-800 transition-transform hover:scale-105"
-                onClick={() => p.image_url && setPreviewImage(dynamicImageUrl)}
+                onClick={() => setPreviewImage(currentVariantImage)}
               >
-                {p.image_url ? (
-                  <img 
-                    src={dynamicImageUrl} 
-                    onError={(e) => { e.currentTarget.src = p.image_url; e.currentTarget.onerror = null }} 
-                    alt={p.name_en} 
-                    className="absolute inset-0 w-full h-full object-cover" 
-                  />
-                ) : (
-                  <span className="text-sm font-bold text-center px-2 text-slate-400 flex items-center justify-center h-full">
-                    {p.name_en}
-                  </span>
-                )}
+                <img 
+                  src={currentVariantImage} 
+                  onError={(e) => { (e.target as HTMLImageElement).src = p.image_url || 'https://placehold.co/400x400/f5f0eb/8b7355?text=No+Image' }} 
+                  alt={p.name_en} 
+                  className="absolute inset-0 w-full h-full object-contain p-1" 
+                />
               </div>
             </div>
 
@@ -228,13 +225,13 @@ export function ProductCatalog({ initialProducts, onProceedToQuotation, onCartCh
                 ) : (
                   <span className="flex items-center gap-1 text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full"><div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> In Stock</span>
                 )}
-                <span className="text-slate-400">Avail: {variant.stock}</span>
+                <span className="text-slate-400">Avail: {availableStock}</span>
               </div>
 
-              {/* Expected warning — only show when quantity exceeds stock */}
-              {(Number(quantities[p.id]) || 1) > variant.stock && p.expected && (
-                <div className="text-[10px] text-orange-600 flex items-center gap-1 font-medium bg-orange-50 border border-orange-200 px-2 py-1 rounded-lg mt-1 mb-1">
-                  🚚 <span>Expected: <strong>{p.expected}</strong></span>
+              {/* Expected warning — show when quantity exceeds stock */}
+              {isExceedingStock && (
+                <div className="text-[10px] text-amber-800 dark:text-amber-200 flex items-center gap-1 font-semibold bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 px-2 py-1 rounded-lg mt-1 mb-1">
+                  🚚 <span>Expected Date: <strong>{p.expected || (variant as any)?.expected || 'Oct 15, 2026'}</strong></span>
                 </div>
               )}
 
@@ -338,12 +335,18 @@ export function ProductCatalog({ initialProducts, onProceedToQuotation, onCartCh
                       <Plus className="w-3 h-3" />
                     </button>
                   </div>
-                  <Button
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 h-8 text-xs disabled:opacity-50"
-                    onClick={() => addToCart(p)}
-                  >
-                    {isOutOfStock ? 'Pre-order' : 'Add'}
-                  </Button>
+                  {!isExceedingStock ? (
+                    <Button
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 h-8 text-xs disabled:opacity-50"
+                      onClick={() => addToCart(p)}
+                    >
+                      {isOutOfStock ? 'Pre-order' : 'Add'}
+                    </Button>
+                  ) : (
+                    <div className="flex-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-md h-8 flex items-center justify-center px-1 text-center">
+                      Exceeds Stock ({availableStock})
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -365,24 +368,18 @@ export function ProductCatalog({ initialProducts, onProceedToQuotation, onCartCh
               {cart.length === 0 ? (
                 <div className="text-center text-muted-foreground mt-10">Cart is empty</div>
               ) : (
-                cart.map((item, idx) => (
+                cart.map((item, idx) => {
+                  const itemVariant = item.product.variants?.find((v: any) => v.color === item.color)
+                  const itemImg = itemVariant?.image_url || item.product.image_url || 'https://placehold.co/400x400/f5f0eb/8b7355?text=No+Image'
+                  return (
                   <div key={idx} className="flex items-center gap-4 border-b pb-4">
-                    <div className={`w-16 h-16 rounded-md relative overflow-hidden ${item.product.image_color} flex-shrink-0`}>
-                      {item.product.base_image_url ? (
-                        <img
-                          src={`${item.product.base_image_url}_${item.color.toLowerCase().replace(/ /g, '_')}.png`}
-                          alt={item.product.name_en}
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      ) : (
-                        item.product.image_url && (
-                          <img
-                            src={item.product.image_url}
-                            alt={item.product.name_en}
-                            className="absolute inset-0 w-full h-full object-cover"
-                          />
-                        )
-                      )}
+                    <div className={`w-16 h-16 rounded-md relative overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 border`}>
+                      <img
+                        src={itemImg}
+                        onError={(e) => { (e.target as HTMLImageElement).src = item.product.image_url || 'https://placehold.co/400x400/f5f0eb/8b7355?text=No+Image' }}
+                        alt={item.product.name_en}
+                        className="absolute inset-0 w-full h-full object-contain p-1"
+                      />
                     </div>
                     <div className="flex-1">
                       <h4 className="font-semibold text-sm">{item.product.name_en}</h4>
@@ -407,7 +404,7 @@ export function ProductCatalog({ initialProducts, onProceedToQuotation, onCartCh
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                ))
+                )})
               )}
             </div>
 

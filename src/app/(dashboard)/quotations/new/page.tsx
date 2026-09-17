@@ -152,11 +152,7 @@ function NewQuotationContent() {
     // Discount strictly above 25% requires Admin Approval (25% itself is auto-approved)
     const newStatus = maxDiscount > 25 ? 'Pending Approval' : 'Quotation Generated'
     const newId = 'QT-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000)
-    
-    // Deduct stock for each cart item
-    cart.forEach(item => {
-      deductStock(item.product.id, item.color, item.qty)
-    })
+    // Note: Stock is NOT deducted here — it will be deducted when the quotation is marked Completed
 
     // Build quotation data and navigate to the preview page
     const quotationData = {

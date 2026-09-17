@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import {
   Menu, X, LayoutDashboard, Users, FileText, ShoppingCart,
   LogOut, Package, Bell, ChevronDown, Zap, CheckCircle2,
-  Clock, XCircle, Trash2, Check, ExternalLink
+  Clock, XCircle, Trash2, Check, ExternalLink, UserCog, Settings
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
@@ -11,12 +11,22 @@ import { useLang } from '@/context/lang-context'
 import { useNotifications, AppNotification } from '@/context/notification-context'
 import { useAuth } from '@/context/auth-context'
 
-const navItems = [
+const salespersonNavItems = [
   { titleKey: 'nav.dashboard', href: '/dashboard', icon: LayoutDashboard },
   { titleKey: 'nav.customers', href: '/customers', icon: Users },
   { titleKey: 'nav.products', href: '/products', icon: ShoppingCart },
   { titleKey: 'nav.newQuotation', href: '/quotations/new', icon: FileText },
   { titleKey: 'nav.myQuotations', href: '/quotations', icon: Package },
+]
+
+const adminNavItems = [
+  { titleKey: 'nav.dashboard', href: '/admin', icon: LayoutDashboard },
+  { titleKey: 'nav.myQuotations', href: '/admin/quotations', icon: FileText },
+  { titleKey: 'nav.customers', href: '/admin/customers', icon: Users },
+  { titleKey: 'Manage Products', href: '/admin/products', icon: ShoppingCart },
+  { titleKey: 'View Catalog', href: '/admin/catalog', icon: Package },
+  { titleKey: 'Users', href: '/admin/users', icon: UserCog },
+  { titleKey: 'Settings', href: '/admin/settings', icon: Settings },
 ]
 
 function formatTimeAgo(isoDate: string): string {
@@ -48,13 +58,15 @@ export function Header() {
     deleteNotification,
     clearAll,
   } = useNotifications()
-  const { displayName, displayRole, initials, signOut } = useAuth()
+  const { displayName, displayRole, initials, role, signOut } = useAuth()
 
-  const isAdmin = pathname.startsWith('/admin')
+  const isAdmin = role === 'admin' || pathname.startsWith('/admin')
   const currentRole: 'admin' | 'salesperson' = isAdmin ? 'admin' : 'salesperson'
   const userName = displayName
   const userInitials = initials
   const userRole = isAdmin ? 'Administrator' : displayRole
+
+  const navItems = isAdmin ? adminNavItems : salespersonNavItems
 
   const unreadNum = unreadCount(currentRole)
 
