@@ -14,6 +14,9 @@ const CATEGORIES = ['All', 'Dinner Plates', 'Bowls', 'Platters', 'Serving', 'Tra
 export function ProductCatalog({ initialProducts, onProceedToQuotation, onCartChange, initialCart }: { initialProducts?: any[], onProceedToQuotation?: (cart: any[]) => void, onCartChange?: (items: any[]) => void, initialCart?: any[] }) {
   const { products } = useProducts()
   const [activeCategory, setActiveCategory] = useState('All')
+
+  // Dynamic categories including standard ones + any new categories added by admin
+  const allCategories = Array.from(new Set(['All', ...CATEGORIES.filter(c => c !== 'All'), ...products.map(p => p.category).filter(Boolean)]))
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState('Newest First')
   const [cart, setCart] = useState<{ product: any, qty: number, discount: number, color: string }[]>(initialCart || [])
@@ -150,7 +153,7 @@ export function ProductCatalog({ initialProducts, onProceedToQuotation, onCartCh
 
       {/* Category Pills */}
       <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-        {CATEGORIES.map(cat => (
+        {allCategories.map(cat => (
           <button
             key={cat}
             onClick={() => setActiveCategory(cat)}

@@ -75,6 +75,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    // 1. If demo_role cookie exists, activate demo session immediately without waiting for Supabase
+    const isClient = typeof document !== 'undefined'
+    const demoRole = isClient ? document.cookie.split('; ').find(r => r.startsWith('demo_role='))?.split('=')[1] : null
+    if (demoRole) {
+      const resolvedRole: UserRole = demoRole === 'admin' ? 'admin' : 'salesperson'
+      setProfile({
+        id: 'demo-user-id',
+        full_name: resolvedRole === 'admin' ? 'Abdul Khabeer' : 'Ahmad Al Rashid',
+        email: resolvedRole === 'admin' ? 'admin@melamine.com' : 'sales@melamine.com',
+        role: resolvedRole,
+      })
+      setLoading(false)
+      return
+    }
+
     const supabase = createClient()
     if (!supabase) {
       // Demo / fallback mode
@@ -94,6 +109,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let isMounted = true
 
+    const setDemoFallbackProfile = () => {
+      const isClient = typeof document !== 'undefined'
+      const demoRole = isClient ? document.cookie.split('; ').find(r => r.startsWith('demo_role='))?.split('=')[1] : null
+      const resolvedRole: UserRole = demoRole === 'admin' ? 'admin' : 'salesperson'
+      setProfile({
+        id: 'demo-user-id',
+        full_name: resolvedRole === 'admin' ? 'Abdul Khabeer' : 'Ahmad Al Rashid',
+        email: resolvedRole === 'admin' ? 'admin@melamine.com' : 'sales@melamine.com',
+        role: resolvedRole,
+      })
+    }
+
     // Get initial session
     supabase.auth.getUser().then(async (res: { data: { user: User | null } }) => {
       const initialUser = res.data?.user ?? null
@@ -101,8 +128,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(initialUser)
       if (initialUser) {
         await fetchProfile(initialUser)
+      } else {
+        setDemoFallbackProfile()
       }
       if (isMounted) setLoading(false)
+    }).catch(() => {
+      if (!isMounted) return
+      setDemoFallbackProfile()
+      setLoading(false)
     })
 
     // Listen to auth state changes (login, logout, token refresh, password recovery)
@@ -113,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (currentUser) {
         await fetchProfile(currentUser)
       } else {
-        setProfile(null)
+        setDemoFallbackProfile()
       }
       if (isMounted) setLoading(false)
     })
@@ -126,6 +159,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     setLoading(true)
+    if (typeof document !== 'undefined') {
+      document.cookie = 'demo_role=; path=/; max-age=0'
+    }
     await signOutAction()
   }
 

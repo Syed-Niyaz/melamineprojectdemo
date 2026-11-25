@@ -1,0 +1,54 @@
+[
+  {
+    "id": "notif-1",
+    "type": "pending_approval",
+    "targetRole": "admin",
+    "title": "Discount Approval Required",
+    "message": "Ahmad Al Rashid requested a 28% discount on Quotation QT-1005 for Al Safa Trading (SAR 14,200.00).",
+    "quotationId": "QT-1005",
+    "customerName": "Al Safa Trading",
+    "salespersonName": "Ahmad Al Rashid",
+    "link": "/admin/approvals",
+    "createdAt": "2026-11-24T08:55:36.910Z",
+    "read": false
+  },
+  {
+    "id": "notif-2",
+    "type": "quotation_created",
+    "targetRole": "admin",
+    "title": "New Quotation Created",
+    "message": "Sarah Chen created new quotation QT-1008 for Al Fanar Ceramics (SAR 18,400.00).",
+    "quotationId": "QT-1008",
+    "customerName": "Al Fanar Ceramics",
+    "salespersonName": "Sarah Chen",
+    "link": "/admin/quotations",
+    "createdAt": "2026-11-24T08:22:36.913Z",
+    "read": false
+  },
+  {
+    "id": "notif-3",
+    "type": "quotation_completed",
+    "targetRole": "admin",
+    "title": "Order Completed",
+    "message": "Quotation QT-1002 for Saudi Ceramic Co. has been marked as Completed (SAR 8,900.00).",
+    "quotationId": "QT-1002",
+    "customerName": "Saudi Ceramic Co.",
+    "salespersonName": "Marcus Johnson",
+    "link": "/admin/analytics/status/completed",
+    "createdAt": "2026-11-24T06:07:36.913Z",
+    "read": true
+  },
+  {
+    "id": "notif-4",
+    "type": "quotation_approved",
+    "targetRole": "salesperson",
+    "title": "Quotation Approved by Admin",
+    "message": "Admin accepted quotation QT-1005 for Al Safa Trading. You can now send it to the client.",
+    "quotationId": "QT-1005",
+    "customerName": "Al Safa Trading",
+    "salespersonName": "Ahmad Al Rashid",
+    "link": "/quotations",
+    "createdAt": "2026-11-24T08:47:36.913Z",
+    "read": false
+  }
+]

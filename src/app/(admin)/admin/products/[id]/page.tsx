@@ -35,7 +35,7 @@ export default function AdminProductDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { isRtl } = useLang()
-  const { products, setProducts, refreshProducts } = useProducts() as any
+  const { products, setProducts, refreshProducts, updateProduct, deleteProduct, addVariant } = useProducts() as any
 
   const product: Product | undefined = products.find((p: Product) => p.id === params.id)
 
@@ -71,17 +71,19 @@ export default function AdminProductDetailPage() {
     const updatedImage = editVariantImageUrl || editVariant.image_url
 
     // Build updated products list for React state & localStorage
-    const updatedProducts = products.map((p: Product) => {
-      if (p.id !== product.id) return p
-      return {
-        ...p,
-        variants: p.variants.map(v =>
-          v.color === editVariant.color ? { ...v, stock: newStock, image_url: updatedImage } : v
-        ),
-      }
-    })
-    setProducts(updatedProducts)
-    localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
+    const updatedProduct = {
+      ...product,
+      variants: product.variants.map(v =>
+        v.color === editVariant.color ? { ...v, stock: newStock, image_url: updatedImage } : v
+      ),
+    }
+    if (updateProduct) {
+      await updateProduct(updatedProduct)
+    } else {
+      const updatedProducts = products.map((p: Product) => p.id === product.id ? updatedProduct : p)
+      setProducts(updatedProducts)
+      localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
+    }
 
     // Persist to Supabase DB
     try {
@@ -137,16 +139,20 @@ export default function AdminProductDetailPage() {
       image_url: uploadedUrl,
     }
 
-    // Update React State & localStorage immediately
-    const updatedProducts = products.map((p: Product) => {
-      if (p.id !== product.id) return p
-      return {
-        ...p,
-        variants: [...p.variants, newVariant],
-      }
-    })
-    setProducts(updatedProducts)
-    localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
+    // Update React State, localStorage, and server API
+    if (addVariant) {
+      await addVariant(product.id, newVariant)
+    } else {
+      const updatedProducts = products.map((p: Product) => {
+        if (p.id !== product.id) return p
+        return {
+          ...p,
+          variants: [...p.variants, newVariant],
+        }
+      })
+      setProducts(updatedProducts)
+      localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
+    }
 
     // Persist to Supabase DB
     try {
@@ -182,10 +188,14 @@ export default function AdminProductDetailPage() {
   const handleDeleteProduct = async () => {
     setIsDeleting(true)
     try {
-      // 1. Remove from React state and localStorage immediately
-      const updatedProducts = products.filter((p: Product) => p.id !== product.id)
-      setProducts(updatedProducts)
-      localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
+      // 1. Remove from React state, localStorage, and server API
+      if (deleteProduct) {
+        await deleteProduct(product.id)
+      } else {
+        const updatedProducts = products.filter((p: Product) => p.id !== product.id)
+        setProducts(updatedProducts)
+        localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
+      }
 
       // 2. Delete from Supabase (variants first to respect FK, then product)
       const supabase = createClient()
@@ -220,21 +230,26 @@ export default function AdminProductDetailPage() {
 
     const uploadedUrl = editProductImageUrl || undefined
 
-    setProducts((prev: Product[]) => prev.map(p =>
-      p.id === product.id
-        ? {
-            ...p,
-            name_en,
-            name_ar,
-            sku,
-            category,
-            price_bw: priceBw,
-            price_colored: priceColored,
-            expected: delivery || undefined,
-            ...(uploadedUrl ? { image_url: uploadedUrl } : {}),
-          }
-        : p
-    ))
+    const updated = {
+      ...product,
+      name_en,
+      name_ar,
+      sku,
+      category,
+      price_bw: priceBw,
+      price_colored: priceColored,
+      expected: delivery || undefined,
+      ...(uploadedUrl ? { image_url: uploadedUrl } : {}),
+    }
+
+    if (updateProduct) {
+      await updateProduct(updated)
+    } else {
+      const updatedProducts = products.map((p: Product) => p.id === product.id ? updated : p)
+      setProducts(updatedProducts)
+      localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
+      window.dispatchEvent(new Event('stock_updated'))
+    }
 
     // Persist to Supabase
     try {

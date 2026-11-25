@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export type Customer = {
@@ -41,7 +41,27 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS)
   const [isLoaded, setIsLoaded] = useState(false)
 
-  const fetchCustomersFromSupabase = async () => {
+  // Fetch customers from server persistent store (/api/customers)
+  const fetchCustomersFromServer = useCallback(async () => {
+    try {
+      const res = await fetch('/api/customers')
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.customers && Array.isArray(data.customers) && data.customers.length > 0) {
+          setCustomers(data.customers)
+          try {
+            localStorage.setItem('global_customers', JSON.stringify(data.customers))
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching customers from server API:', err)
+    }
+  }, [])
+
+  const fetchCustomersFromSupabase = useCallback(async () => {
+    await fetchCustomersFromServer()
+
     const supabase = createClient()
     if (!supabase) return
 
@@ -63,117 +83,139 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
           cr_no: c.cr_no || '',
           orders: 0,
         }))
-        setCustomers(formatted)
-        localStorage.setItem('global_customers', JSON.stringify(formatted))
-      } else if (data && data.length === 0) {
-        // Table is empty in Supabase, load and sync initial demo customers
-        setCustomers(INITIAL_CUSTOMERS)
-        localStorage.setItem('global_customers', JSON.stringify(INITIAL_CUSTOMERS))
+
+        // Merge with local/server items
+        let merged = formatted
+        try {
+          const currentLocal = JSON.parse(localStorage.getItem('global_customers') || '[]')
+          if (Array.isArray(currentLocal) && currentLocal.length > 0) {
+            const extraLocal = currentLocal.filter((lc: Customer) =>
+              !formatted.some(fc => fc.id === lc.id || fc.name.toLowerCase() === lc.name.toLowerCase())
+            )
+            merged = [...formatted, ...extraLocal]
+          }
+        } catch {}
+
+        setCustomers(merged)
+        try {
+          localStorage.setItem('global_customers', JSON.stringify(merged))
+        } catch {}
       }
     } catch (err) {
       console.error('Error fetching customers from Supabase:', err)
     }
-  }
+  }, [fetchCustomersFromServer])
 
   useEffect(() => {
-    // Initial local cache load for instantaneous UI rendering
-    const stored = localStorage.getItem('global_customers')
-    if (stored) {
-      try {
-        setCustomers(JSON.parse(stored))
-      } catch {
-        setCustomers(INITIAL_CUSTOMERS)
+    // 1. Initial local cache load for instantaneous UI rendering
+    try {
+      const stored = localStorage.getItem('global_customers')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCustomers(parsed)
+        }
       }
-    }
+    } catch {}
     setIsLoaded(true)
 
-    // Fetch live from Supabase
-    fetchCustomersFromSupabase()
+    // 2. Fetch live from server
+    fetchCustomersFromServer()
 
-    // Setup Supabase Realtime Listener
-    const supabase = createClient()
-    if (!supabase) return
+    // 3. Poll server every 3 seconds so both devices stay synchronized
+    const pollInterval = setInterval(() => {
+      fetchCustomersFromServer()
+    }, 3000)
 
-    const channel = supabase
-      .channel('realtime_customers')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'customers' },
-        (_payload: any) => {
-          fetchCustomersFromSupabase()
+    // 4. Focus sync
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchCustomersFromServer()
+      }
+    }
+    window.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', handleVisibility)
+
+    // 5. Cross-tab sync
+    const handleSync = () => {
+      try {
+        const saved = localStorage.getItem('global_customers')
+        if (saved) {
+          setCustomers(JSON.parse(saved))
         }
-      )
-      .subscribe()
+      } catch {}
+    }
+    window.addEventListener('storage', handleSync)
 
     return () => {
-      supabase.removeChannel(channel)
+      clearInterval(pollInterval)
+      window.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleVisibility)
+      window.removeEventListener('storage', handleSync)
     }
-  }, [])
+  }, [fetchCustomersFromServer])
 
   const addCustomer = async (c: Customer) => {
-    // Optimistic UI update with temporary ID
-    const tempId = c.id || crypto.randomUUID?.() || Date.now().toString()
-    const tempCustomer = { ...c, id: tempId }
-    setCustomers(prev => [tempCustomer, ...prev])
+    const tempId = c.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString())
+    const tempCustomer: Customer = { ...c, id: tempId }
 
+    setCustomers(prev => {
+      const updated = [tempCustomer, ...prev.filter(existing => existing.id !== tempId)]
+      try {
+        localStorage.setItem('global_customers', JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
+
+    // Save to server API (/api/customers)
+    try {
+      await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', customer: tempCustomer }),
+      })
+    } catch (e) {
+      console.error('Failed to save customer to server API:', e)
+    }
+
+    // Best-effort Supabase sync
     const supabase = createClient()
     if (supabase) {
       try {
         const { data: { user } } = await supabase.auth.getUser()
-        
-        // Let the database generate the UUID by omitting id
-        const { data, error } = await supabase.from('customers').insert({
-          name: c.name,
-          address: c.address,
-          mobile_no: c.mobile_no,
-          email: c.email,
-          vat_no: c.vat_no || c.vat,
-          cr_no: c.cr_no || c.cr,
-          created_by: user?.id,
-        }).select().single()
-
-        if (error) {
-          console.error('Failed to insert customer to Supabase:', error)
-          // Revert optimistic update on failure
-          setCustomers(prev => prev.filter(existing => existing.id !== tempId))
-          return
+        if (user) {
+          await supabase.from('customers').insert({
+            name: c.name,
+            address: c.address,
+            mobile_no: c.mobile_no,
+            email: c.email,
+            vat_no: c.vat_no || c.vat,
+            cr_no: c.cr_no || c.cr,
+            created_by: user.id,
+          })
         }
-
-        if (data) {
-          // Replace temp customer with real database record
-          const realCustomer: Customer = {
-            id: data.id,
-            name: data.name,
-            contact_person: data.name,
-            mobile_no: data.mobile_no || '',
-            email: data.email || '',
-            address: data.address || '',
-            vat_no: data.vat_no || '',
-            cr_no: data.cr_no || '',
-            orders: 0
-          }
-          setCustomers(prev => prev.map(existing => existing.id === tempId ? realCustomer : existing))
-          
-          // Update localStorage safely
-          const currentLocal = localStorage.getItem('global_customers')
-          if (currentLocal) {
-            try {
-              const parsed = JSON.parse(currentLocal)
-              const updated = parsed.map((existing: Customer) => existing.id === tempId ? realCustomer : existing)
-              localStorage.setItem('global_customers', JSON.stringify(updated))
-            } catch (e) {}
-          }
-        }
-      } catch (err) {
-        console.error('Unexpected error inserting customer:', err)
-        setCustomers(prev => prev.filter(existing => existing.id !== tempId))
-      }
+      } catch {}
     }
   }
 
   const updateCustomer = async (c: Customer) => {
-    setCustomers(prev => prev.map(existing => existing.id === c.id ? c : existing))
-    localStorage.setItem('global_customers', JSON.stringify(customers.map(existing => existing.id === c.id ? c : existing)))
+    setCustomers(prev => {
+      const updated = prev.map(existing => existing.id === c.id ? c : existing)
+      try {
+        localStorage.setItem('global_customers', JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
+
+    try {
+      await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update', customer: c }),
+      })
+    } catch (e) {
+      console.error('Failed to update customer on server API:', e)
+    }
 
     const supabase = createClient()
     if (supabase) {
@@ -186,23 +228,34 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
           vat_no: c.vat_no || c.vat,
           cr_no: c.cr_no || c.cr,
         }).eq('id', c.id)
-      } catch (err) {
-        console.error('Failed to update customer in Supabase:', err)
-      }
+      } catch {}
     }
   }
 
   const deleteCustomer = async (id: string) => {
-    setCustomers(prev => prev.filter(c => c.id !== id))
-    localStorage.setItem('global_customers', JSON.stringify(customers.filter(c => c.id !== id)))
+    setCustomers(prev => {
+      const updated = prev.filter(c => c.id !== id)
+      try {
+        localStorage.setItem('global_customers', JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
+
+    try {
+      await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id }),
+      })
+    } catch (e) {
+      console.error('Failed to delete customer on server API:', e)
+    }
 
     const supabase = createClient()
     if (supabase) {
       try {
         await supabase.from('customers').delete().eq('id', id)
-      } catch (err) {
-        console.error('Failed to delete customer in Supabase:', err)
-      }
+      } catch {}
     }
   }
 

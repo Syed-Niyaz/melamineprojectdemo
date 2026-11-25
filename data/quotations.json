@@ -1,0 +1,218 @@
+[
+  {
+    "id": "QT-2026-8918",
+    "customerName": "Gulf Modular Kitchens",
+    "salesperson": "Ahmad Al Rashid",
+    "date": "24 November 2026",
+    "discount": 26,
+    "discount_total": 1216.8,
+    "subtotal": 4680,
+    "vat_amount": 519.4799999999999,
+    "grandTotal": 3982.68,
+    "status": "Completed",
+    "items": [
+      {
+        "product": {
+          "id": "local-1795501867568-3dm53r",
+          "name_en": "NIyaz",
+          "name_ar": "sdcsc",
+          "sku": "sdcsdc",
+          "category": "Bowls",
+          "price_bw": 52,
+          "price_colored": 20,
+          "image_color": "bg-slate-100",
+          "base_image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795501865417_jxb0lv2gv7o.jpeg",
+          "image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795501865417_jxb0lv2gv7o.jpeg",
+          "expected": "2026-11-26",
+          "variants": [
+            {
+              "color": "WHITE",
+              "stock": 90,
+              "sales": 110
+            },
+            {
+              "color": "BLACK",
+              "stock": 500,
+              "sales": 0,
+              "image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795504939900_b07ow4p4rmq.png"
+            },
+            {
+              "color": "GOLDEN MARBLA",
+              "stock": 5000,
+              "sales": 0,
+              "image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795504964561_ogmrjuxurmt.png"
+            },
+            {
+              "color": "WHITE MARBLE",
+              "stock": 55,
+              "sales": 0,
+              "image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795504982908_8fu1hxr97c4.png"
+            },
+            {
+              "color": "CREAM DOT",
+              "stock": 400,
+              "sales": 0
+            },
+            {
+              "color": "BLACK MARBLE",
+              "stock": 2,
+              "sales": 0
+            },
+            {
+              "color": "GRAY 1200",
+              "stock": 45,
+              "sales": 0
+            }
+          ]
+        },
+        "qty": 90,
+        "discount": 26,
+        "color": "WHITE"
+      }
+    ],
+    "remarks": "",
+    "paymentTerms": "Cash / Advance"
+  },
+  {
+    "id": "QT-2026-8102",
+    "customerName": "Raha Kitchen Solutions",
+    "salesperson": "Ahmad Al Rashid",
+    "date": "24 November 2026",
+    "discount": 15,
+    "discount_total": 78,
+    "subtotal": 520,
+    "vat_amount": 66.3,
+    "grandTotal": 508.3,
+    "status": "Completed",
+    "items": [
+      {
+        "product": {
+          "id": "local-1795501867568-3dm53r",
+          "name_en": "NIyaz",
+          "name_ar": "sdcsc",
+          "sku": "sdcsdc",
+          "category": "Bowls",
+          "price_bw": 52,
+          "price_colored": 20,
+          "image_color": "bg-slate-100",
+          "base_image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795501865417_jxb0lv2gv7o.jpeg",
+          "image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795501865417_jxb0lv2gv7o.jpeg",
+          "expected": "2026-11-26",
+          "variants": [
+            {
+              "color": "WHITE",
+              "stock": 100,
+              "sales": 100
+            },
+            {
+              "color": "BLACK",
+              "stock": 500,
+              "sales": 0,
+              "image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795504939900_b07ow4p4rmq.png"
+            },
+            {
+              "color": "GOLDEN MARBLA",
+              "stock": 5000,
+              "sales": 0,
+              "image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795504964561_ogmrjuxurmt.png"
+            },
+            {
+              "color": "WHITE MARBLE",
+              "stock": 55,
+              "sales": 0,
+              "image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795504982908_8fu1hxr97c4.png"
+            },
+            {
+              "color": "CREAM DOT",
+              "stock": 400,
+              "sales": 0
+            },
+            {
+              "color": "BLACK MARBLE",
+              "stock": 2,
+              "sales": 0
+            },
+            {
+              "color": "GRAY 1200",
+              "stock": 45,
+              "sales": 0
+            }
+          ]
+        },
+        "qty": 10,
+        "discount": 15,
+        "color": "WHITE"
+      }
+    ],
+    "remarks": "",
+    "paymentTerms": "Cash / Advance"
+  },
+  {
+    "id": "QT-2026-3756",
+    "customerName": "Raha Kitchen Solutions",
+    "salesperson": "Ahmad Al Rashid",
+    "date": "24 November 2026",
+    "discount": 15,
+    "discount_total": 780,
+    "subtotal": 5200,
+    "vat_amount": 663,
+    "grandTotal": 5083,
+    "status": "Completed",
+    "items": [
+      {
+        "product": {
+          "id": "local-1795501867568-3dm53r",
+          "name_en": "NIyaz",
+          "name_ar": "sdcsc",
+          "sku": "sdcsdc",
+          "category": "Bowls",
+          "price_bw": 52,
+          "price_colored": 20,
+          "image_color": "bg-slate-100",
+          "base_image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795501865417_jxb0lv2gv7o.jpeg",
+          "image_url": "https://ueuvdvdkhyynqvqjcmby.supabase.co/storage/v1/object/public/product-images/products/1795501865417_jxb0lv2gv7o.jpeg",
+          "expected": "2026-11-26",
+          "variants": [
+            {
+              "color": "WHITE",
+              "stock": 100,
+              "sales": 0
+            }
+          ]
+        },
+        "qty": 100,
+        "discount": 15,
+        "color": "WHITE"
+      }
+    ],
+    "remarks": "",
+    "paymentTerms": "Cash / Advance"
+  },
+  {
+    "id": "QT-1001",
+    "customerName": "Al Muhaidib Kitchens",
+    "salesperson": "Ahmad Al Rashid",
+    "date": "2026-09-10",
+    "discount": 5,
+    "grandTotal": 14500,
+    "status": "Completed"
+  },
+  {
+    "id": "QT-1002",
+    "customerName": "Raha Kitchen Solutions",
+    "salesperson": "Ahmad Al Rashid",
+    "date": "2026-09-11",
+    "discount": 8,
+    "grandTotal": 8900,
+    "status": "Pending Approval"
+  },
+  {
+    "id": "QT-1003",
+    "customerName": "Eastern Kitchens Factory",
+    "salesperson": "Abdul Khabeer",
+    "date": "2026-09-12",
+    "discount": 0,
+    "grandTotal": 22300,
+    "status": "Approved"
+  }
+]

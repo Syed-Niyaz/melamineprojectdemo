@@ -1,16 +1,15 @@
 import { redirect } from 'next/navigation'
-import { getCurrentProfile } from '@/lib/supabase/auth'
+import { cookies } from 'next/headers'
 
 export default async function Home() {
-  const profile = await getCurrentProfile()
+  const cookieStore = await cookies()
+  const demoRole = cookieStore.get('demo_role')?.value
 
-  if (!profile) {
-    redirect('/login')
-  }
-
-  if (profile.role === 'admin') {
+  if (demoRole === 'admin') {
     redirect('/admin')
+  } else if (demoRole === 'salesperson') {
+    redirect('/dashboard')
   }
 
-  redirect('/dashboard')
+  redirect('/login')
 }

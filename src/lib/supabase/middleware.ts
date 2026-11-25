@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password', '/auth/callback', '/auth/confirm']
+const PUBLIC_PATHS = ['/', '/login', '/forgot-password', '/reset-password', '/auth/callback', '/auth/confirm']
 const ADMIN_PATHS = ['/admin']
 
 export async function updateSession(request: NextRequest) {
@@ -9,18 +9,23 @@ export async function updateSession(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // If Supabase environment variables are missing (fallback/demo mode)
-  if (!url || !key) {
-    const demoCookie = request.cookies.get('demo_role')?.value
-    const isPublic = PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`))
-    
-    if (!demoCookie && !isPublic) {
-      const loginUrl = new URL('/login', request.url)
-      loginUrl.searchParams.set('redirectTo', pathname)
-      return NextResponse.redirect(loginUrl)
+  const demoCookie = request.cookies.get('demo_role')?.value
+  const isPublicRoute = PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`))
+  const isAuthCallback = pathname.startsWith('/auth/')
+  const isApiRoute = pathname.startsWith('/api/')
+
+  // Allow all API routes directly
+  if (isApiRoute) {
+    return NextResponse.next({ request })
+  }
+
+  // 1. If demo_role cookie exists, handle demo session immediately (0ms delay, no Supabase call)
+  if (demoCookie) {
+    if (pathname === '/login' || pathname === '/forgot-password') {
+      return NextResponse.redirect(new URL(demoCookie === 'admin' ? '/admin' : '/dashboard', request.url))
     }
 
-    if (demoCookie && (pathname === '/login' || pathname === '/forgot-password')) {
+    if (pathname === '/') {
       return NextResponse.redirect(new URL(demoCookie === 'admin' ? '/admin' : '/dashboard', request.url))
     }
 
@@ -31,34 +36,53 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.next({ request })
   }
 
+  // 2. If Supabase environment variables are missing (fallback/demo mode)
+  if (!url || !key) {
+    if (!isPublicRoute) {
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('redirectTo', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+    return NextResponse.next({ request })
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   })
 
-  const supabase = createServerClient(url, key, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll()
+  let user = null
+  let supabase: any = null
+  try {
+    supabase = createServerClient(url, key, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
       },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-        response = NextResponse.next({
-          request,
-        })
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
-        )
-      },
-    },
-  })
+    })
 
-  // Refresh auth token and verify user
-  const { data: { user } } = await supabase.auth.getUser()
-
-  const isPublicRoute = PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`))
-  const isAuthCallback = pathname.startsWith('/auth/')
+    // Timeout getUser after 2000ms so it never hangs requests when Supabase is slow
+    const userRes = await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<{ data: { user: null } }>((resolve) =>
+        setTimeout(() => resolve({ data: { user: null } }), 2000)
+      ),
+    ])
+    user = userRes?.data?.user ?? null
+  } catch {
+    user = null
+  }
 
   // If not authenticated and trying to access a protected route
   if (!user && !isPublicRoute && !isAuthCallback) {

@@ -5,6 +5,12 @@ export async function proxy(request: NextRequest) {
   return await updateSession(request)
 }
 
+export async function middleware(request: NextRequest) {
+  return await updateSession(request)
+}
+
+export default updateSession
+
 export const config = {
   matcher: [
     /*

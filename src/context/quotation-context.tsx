@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { updateQuotationStatusInDB, deleteQuotationInDB } from '@/app/actions/quotation-actions'
 
@@ -82,7 +82,27 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
 
-  const fetchQuotationsFromSupabase = async () => {
+  // Fetch quotations from server persistent store (/api/quotations)
+  const fetchQuotationsFromServer = useCallback(async () => {
+    try {
+      const res = await fetch('/api/quotations')
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.quotations && Array.isArray(data.quotations) && data.quotations.length > 0) {
+          setQuotations(data.quotations)
+          try {
+            localStorage.setItem('global_quotations_v2', JSON.stringify(data.quotations))
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching quotations from server API:', err)
+    }
+  }, [])
+
+  const fetchQuotationsFromSupabase = useCallback(async () => {
+    await fetchQuotationsFromServer()
+
     const supabase = createClient()
     if (!supabase) return
 
@@ -150,140 +170,194 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
             mobile_no: cust.mobile_no || '',
             email: cust.email || '',
             address: cust.address || '',
+            vat_no: '',
+            cr_no: '',
+            orders: 0
           }
+
+          const rawItems = q.quotation_items || []
+          const mappedItems = rawItems.map((item: any) => {
+            const variant = item.product_variants || {}
+            const prod = variant.products || {}
+            const unitPrice = Number(item.unit_price_snapshot) || Number(prod.unit_price) || 0
+            const qty = Number(item.quantity) || 1
+            const discPct = Number(item.discount_percentage) || 0
+            const discAmt = Number(item.discount_amount) || (unitPrice * qty * (discPct / 100))
+            const lineAmt = Number(item.line_amount) || (unitPrice * qty - discAmt)
+            const colorName = variant.color || 'WHITE'
+            const isBW = colorName.toUpperCase() === 'BLACK' || colorName.toUpperCase() === 'WHITE'
+            const priceBw = unitPrice
+            const priceCol = Number((unitPrice * 1.15).toFixed(2))
+
+            return {
+              id: item.id,
+              productId: prod.id || variant.id,
+              productName: prod.description || 'Product',
+              color: colorName,
+              quantity: qty,
+              unitPrice: unitPrice,
+              unit_price_snapshot: unitPrice,
+              discount_percentage: discPct,
+              discount_amount: discAmt,
+              line_amount: lineAmt,
+              product: {
+                id: prod.id || variant.id,
+                name_en: prod.description || 'Product',
+                name_ar: prod.arabic_description || prod.description || 'منتج',
+                sku: prod.item_no || 'SKU',
+                category: 'General',
+                price_bw: priceBw,
+                price_colored: priceCol,
+                image_color: 'bg-slate-100',
+                base_image_url: '/images/cup_saucer',
+                image_url: '/images/cup_saucer.png',
+                variants: [
+                  { color: colorName, stock: 100, sales: 0 }
+                ]
+              }
+            }
+          })
+
+          const maxItemDiscount = mappedItems.length > 0
+            ? Math.max(...mappedItems.map((it: any) => Number(it.discount_percentage) || 0))
+            : 0
+
           return {
             id: qNumber,
             customer_id: q.customer_id,
             customerName: cust.name || 'Customer',
             customer: customerObj,
             salesperson_id: q.salesperson_id,
-            salesperson: q.profiles?.full_name || 'Sales Representative',
+            salesperson: q.profiles?.full_name || 'Ahmad Al Rashid',
             date: q.created_at ? new Date(q.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-            discount: Number(q.discount_total) || 0,
-            grandTotal: Number(q.grand_total) || 0,
+            discount: maxItemDiscount,
+            discount_total: Number(q.discount_total) || 0,
             subtotal: Number(q.subtotal) || 0,
             vat_amount: Number(q.vat_amount) || 0,
+            grandTotal: Number(q.grand_total) || 0,
             status: q.status || 'Draft',
-            paymentTerms: q.payment_terms || '',
-            deliveryTerms: q.delivery_terms || '',
             remarks: q.remarks || '',
-            items: (q.quotation_items || []).map((qi: any, idx: number) => {
-              const variant = qi.product_variants || {}
-              const product = variant.products || {}
-              return {
-                id: qi.id || (idx + 1),
-                name: product.description || 'Product Item',
-                sku: product.item_no || '',
-                color: variant.color || '',
-                qty: qi.quantity || 1,
-                quantity: qi.quantity || 1,
-                price: Number(qi.unit_price_snapshot) || 0,
-                unitPrice: Number(qi.unit_price_snapshot) || 0,
-                unit_price_snapshot: Number(qi.unit_price_snapshot) || 0,
-                discount: Number(qi.discount_percentage) || 0,
-                discount_percentage: Number(qi.discount_percentage) || 0,
-                discount_amount: Number(qi.discount_amount) || 0,
-                amount: Number(qi.line_amount) || 0,
-                line_amount: Number(qi.line_amount) || 0,
-                product: {
-                  name_en: product.description || 'Product Item',
-                  name_ar: product.arabic_description || '',
-                  sku: product.item_no || '',
-                  price_bw: Number(qi.unit_price_snapshot) || 0,
-                  price_colored: Number(qi.unit_price_snapshot) || 0,
-                },
-              }
-            }),
+            paymentTerms: q.payment_terms || 'Payment within 30 days',
+            deliveryTerms: q.delivery_terms || 'Standard Delivery',
             created_at: q.created_at,
+            items: mappedItems,
           }
         })
-        setQuotations(formatted)
-        localStorage.setItem('global_quotations_v2', JSON.stringify(formatted))
-      } else if (dbQuotations && dbQuotations.length === 0) {
-        // Fallback to local storage or initial
-        const stored = localStorage.getItem('global_quotations_v2')
-        if (stored) {
-          setQuotations(JSON.parse(stored))
-        } else {
-          setQuotations(INITIAL_QUOTATIONS)
-        }
+
+        // Merge DB quotations with server/local custom quotations
+        let merged = formatted
+        try {
+          const currentLocal = JSON.parse(localStorage.getItem('global_quotations_v2') || '[]')
+          if (Array.isArray(currentLocal) && currentLocal.length > 0) {
+            const extraLocal = currentLocal.filter((lq: Quotation) =>
+              !formatted.some(fq => fq.id === lq.id)
+            )
+            merged = [...formatted, ...extraLocal]
+          }
+        } catch {}
+
+        setQuotations(merged)
+        try {
+          localStorage.setItem('global_quotations_v2', JSON.stringify(merged))
+        } catch {}
       }
     } catch (err) {
       console.error('Error fetching quotations from Supabase:', err)
     }
-  }
+  }, [fetchQuotationsFromServer])
 
   useEffect(() => {
-    // Initial load from local storage
-    const stored = localStorage.getItem('global_quotations_v2')
-    if (stored) {
-      try {
+    // 1. Initial load from local storage
+    try {
+      const stored = localStorage.getItem('global_quotations_v2')
+      if (stored) {
         const parsed = JSON.parse(stored)
-        setQuotations(parsed)
-      } catch {
-        setQuotations(INITIAL_QUOTATIONS)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setQuotations(parsed)
+        }
       }
-    } else {
-      setQuotations(INITIAL_QUOTATIONS)
-    }
+    } catch {}
     setIsLoaded(true)
 
-    // Live Supabase fetch
-    fetchQuotationsFromSupabase()
+    // 2. Fetch fresh from server
+    fetchQuotationsFromServer()
 
-    // Realtime Supabase Channel
-    const supabase = createClient()
-    if (!supabase) return
+    // 3. Poll server every 3 seconds so different devices (Admin PC vs Salesperson Laptop) stay in sync!
+    const pollInterval = setInterval(() => {
+      fetchQuotationsFromServer()
+    }, 3000)
 
-    const channel = supabase
-      .channel('realtime_quotations_live')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'quotations' },
-        (_payload: any) => {
-          fetchQuotationsFromSupabase()
+    // 4. Sync immediately when window is refocused or visible
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchQuotationsFromServer()
+      }
+    }
+    window.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', handleVisibility)
+
+    // 5. Cross-tab sync in same browser
+    const handleSync = () => {
+      try {
+        const saved = localStorage.getItem('global_quotations_v2')
+        if (saved) {
+          setQuotations(JSON.parse(saved))
         }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'quotation_items' },
-        (_payload: any) => {
-          fetchQuotationsFromSupabase()
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'discount_approvals' },
-        (_payload: any) => {
-          fetchQuotationsFromSupabase()
-        }
-      )
-      .subscribe()
+      } catch {}
+    }
+    window.addEventListener('storage', handleSync)
 
     return () => {
-      supabase.removeChannel(channel)
+      clearInterval(pollInterval)
+      window.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleVisibility)
+      window.removeEventListener('storage', handleSync)
     }
-  }, [])
+  }, [fetchQuotationsFromServer])
 
   const addQuotation = async (q: Quotation) => {
-    // Optimistic UI state update (salesperson's browser)
+    // 1. Optimistic UI state update
     setQuotations(prev => {
       const filtered = prev.filter(existing => existing.id !== q.id)
-      return [q, ...filtered]
+      const updated = [q, ...filtered]
+      try {
+        localStorage.setItem('global_quotations_v2', JSON.stringify(updated))
+      } catch {}
+      return updated
     })
-    localStorage.setItem('global_quotations_v2', JSON.stringify([q, ...quotations]))
 
+    // 2. Save directly to server persistent JSON store (/api/quotations)
+    try {
+      const res = await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', quotation: q }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.quotations) {
+          setQuotations(data.quotations)
+          try {
+            localStorage.setItem('global_quotations_v2', JSON.stringify(data.quotations))
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.error('Failed to save quotation to server API:', e)
+    }
+
+    // 3. Best-effort Supabase sync (does NOT block or crash if offline/demo)
     const supabase = createClient()
     if (!supabase) return
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        console.error('addQuotation: no authenticated user')
+        // In demo/offline mode, no cloud user is authenticated — this is normal!
         return
       }
 
-      // Find or create customer UUID
+      // Find or create customer UUID in Supabase
       let customerUuid = q.customer_id
       if (!customerUuid || customerUuid.length < 10) {
         const { data: foundCust } = await supabase
@@ -295,26 +369,20 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
         if (foundCust) {
           customerUuid = foundCust.id
         } else {
-          const { data: newCust, error: custErr } = await supabase.from('customers').insert({
+          const { data: newCust } = await supabase.from('customers').insert({
             name: q.customerName,
             created_by: user.id,
           }).select('id').single()
-          if (custErr) console.error('addQuotation: failed to create customer', custErr)
           customerUuid = newCust?.id
         }
       }
 
-      if (!customerUuid) {
-        console.error('addQuotation: no customer UUID, skipping Supabase insert')
-        return
-      }
+      if (!customerUuid) return
 
-      // q.discount is the max discount percentage (e.g. 26)
-      // q.discount_total is the total SAR discount amount
       const maxDiscountPct = q.discount || 0
       const discountSarAmount = q.discount_total || 0
 
-      const { data: insertedQuotation, error: qErr } = await supabase.from('quotations').insert({
+      const { data: insertedQuotation } = await supabase.from('quotations').insert({
         customer_id: customerUuid,
         salesperson_id: user.id,
         status: q.status || 'Draft',
@@ -329,12 +397,9 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
         remarks: q.remarks,
       }).select('id, quotation_number').single()
 
-      if (qErr || !insertedQuotation) {
-        console.error('addQuotation: Supabase insert failed', qErr)
-        return
-      }
+      if (!insertedQuotation) return
 
-      // ── Insert quotation_items into the database ──
+      // Insert quotation_items if available
       if (q.items && q.items.length > 0) {
         for (const item of q.items) {
           try {
@@ -347,10 +412,7 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
             const discountAmt = unitPrice * qty * (discountPct / 100)
             const lineAmount = item.line_amount || (unitPrice * qty - discountAmt)
 
-            // Try to find or create the product_variant_id
             let variantId: string | null = null
-
-            // First, check if product exists in the DB by sku/item_no
             const productSku = product.sku || product.item_no || ''
             if (productSku) {
               const { data: dbProduct } = await supabase
@@ -360,7 +422,6 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
                 .maybeSingle()
 
               if (dbProduct) {
-                // Look for existing variant with this color
                 const { data: dbVariant } = await supabase
                   .from('product_variants')
                   .select('id')
@@ -370,53 +431,12 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
 
                 if (dbVariant) {
                   variantId = dbVariant.id
-                } else {
-                  // Create the variant
-                  const { data: newVariant } = await supabase
-                    .from('product_variants')
-                    .insert({
-                      product_id: dbProduct.id,
-                      color: color,
-                      stock_quantity: 100,
-                    })
-                    .select('id')
-                    .single()
-                  if (newVariant) variantId = newVariant.id
                 }
               }
             }
 
-            // If no variant found, create a placeholder product + variant so FK is valid
-            if (!variantId) {
-              const placeholderName = product.name_en || product.name || `Product ${product.sku || 'Unknown'}`
-              const { data: newProduct } = await supabase
-                .from('products')
-                .insert({
-                  item_no: productSku || `LOCAL-${product.id || Date.now()}`,
-                  description: placeholderName,
-                  arabic_description: product.name_ar || placeholderName,
-                  category: product.category || 'General',
-                  unit_price: unitPrice,
-                })
-                .select('id')
-                .single()
-
-              if (newProduct) {
-                const { data: newVariant } = await supabase
-                  .from('product_variants')
-                  .insert({
-                    product_id: newProduct.id,
-                    color: color,
-                    stock_quantity: 100,
-                  })
-                  .select('id')
-                  .single()
-                if (newVariant) variantId = newVariant.id
-              }
-            }
-
             if (variantId) {
-              const { error: itemErr } = await supabase.from('quotation_items').insert({
+              await supabase.from('quotation_items').insert({
                 quotation_id: insertedQuotation.id,
                 product_variant_id: variantId,
                 quantity: qty,
@@ -425,138 +445,141 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
                 discount_amount: discountAmt,
                 line_amount: lineAmount,
               })
-              if (itemErr) console.error('addQuotation: failed to insert quotation_item', itemErr)
-            } else {
-              console.error('addQuotation: could not resolve product_variant_id for item', item)
             }
-          } catch (itemError) {
-            console.error('addQuotation: error inserting quotation item', itemError)
-          }
+          } catch {}
         }
       }
 
-      // Create discount_approval record if needed
       if (q.status === 'Pending Approval' || maxDiscountPct > 25) {
-        const { error: daErr } = await supabase.from('discount_approvals').insert({
+        await supabase.from('discount_approvals').insert({
           quotation_id: insertedQuotation.id,
           status: 'Pending',
         })
-        if (daErr) console.error('addQuotation: discount_approvals insert failed', daErr)
-      }
-
-      // Update local state with the real quotation number from DB so IDs stay in sync
-      if (insertedQuotation.quotation_number) {
-        const dbId = `QT-${1000 + insertedQuotation.quotation_number}`
-        setQuotations(prev => prev.map(existing =>
-          existing.id === q.id ? { ...existing, id: dbId } : existing
-        ))
       }
     } catch (err) {
-      console.error('addQuotation: unexpected error', err)
+      console.error('addQuotation: background sync error', err)
     }
   }
 
   const updateStatus = async (id: string, status: string) => {
-    // Optimistic UI state update
-    setQuotations(prev => prev.map(q => q.id === id ? { ...q, status } : q))
-    localStorage.setItem('global_quotations_v2', JSON.stringify(quotations.map(q => q.id === id ? { ...q, status } : q)))
+    // 1. Optimistic UI update
+    setQuotations(prev => {
+      const updated = prev.map(q => q.id === id ? { ...q, status } : q)
+      try {
+        localStorage.setItem('global_quotations_v2', JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
 
-    // Call server action to bypass strict RLS on UPDATE
-    await updateQuotationStatusInDB(id, status)
+    // 2. Persist to server API (/api/quotations)
+    try {
+      await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updateStatus', id, status }),
+      })
+    } catch (e) {
+      console.error('Failed to update quotation status on server API:', e)
+    }
 
-    // ── Deduct stock only when Quotation is marked as Completed ──
+    // 3. Call server action for Supabase DB
+    try {
+      await updateQuotationStatusInDB(id, status)
+    } catch {}
+
+    // 4. Deduct stock when Quotation is Completed
     if (status === 'Completed' || status === 'Customer Accepted') {
       const quotation = quotations.find(q => q.id === id)
       if (quotation?.items && quotation.items.length > 0) {
-        // 1. Update products in localStorage immediately for instant UI refresh
-        try {
-          const savedProducts = localStorage.getItem('global_products_v2')
-          if (savedProducts) {
-            const allProducts = JSON.parse(savedProducts)
-            const updatedProducts = allProducts.map((p: any) => {
-              const matchingItems = (quotation.items || []).filter((item: any) => {
-                const product = item.product || {}
-                return (
-                  String(p.id).toLowerCase() === String(product.id || '').toLowerCase() ||
-                  String(p.sku).toLowerCase() === String(product.sku || '').toLowerCase()
-                )
-              })
-              if (matchingItems.length === 0) return p
-              return {
-                ...p,
-                variants: p.variants.map((v: any) => {
-                  const match = matchingItems.find((item: any) =>
-                    String(v.color).trim().toUpperCase() === String(item.color || '').trim().toUpperCase()
-                  )
-                  if (!match) return v
-                  const qty = Number(match.qty || match.quantity || 0)
-                  return {
-                    ...v,
-                    stock: Math.max(0, v.stock - qty),
-                    sales: (v.sales || 0) + qty,
-                  }
-                }),
-              }
-            })
-            localStorage.setItem('global_products_v2', JSON.stringify(updatedProducts))
-            // Notify all components using useProducts() to re-read from localStorage
-            window.dispatchEvent(new Event('stock_updated'))
-          }
-        } catch (e) {
-          console.error('updateStatus: failed to update products in localStorage', e)
-        }
-
-        // 2. Deduct stock in Supabase for persistence
-        const supabase = createClient()
-        if (supabase) {
-          for (const item of quotation.items) {
+        for (const item of quotation.items) {
+          const product = item.product || {}
+          const color = String(item.color || '').trim().toUpperCase()
+          const qty = Number(item.qty || item.quantity || 0)
+          const pId = product.id || product.sku
+          if (pId && color && qty > 0) {
             try {
-              const product = item.product || {}
-              const color = String(item.color || '').trim().toUpperCase()
-              const qty = Number(item.qty || item.quantity || 0)
-              if (!qty) continue
-
-              // Find product by SKU
-              const sku = product.sku || product.item_no || ''
-              if (!sku) continue
-
-              const { data: dbProduct } = await supabase
-                .from('products')
-                .select('id')
-                .eq('item_no', sku)
-                .maybeSingle()
-
-              if (!dbProduct) continue
-
-              const { data: dbVariant } = await supabase
-                .from('product_variants')
-                .select('id, stock_quantity')
-                .eq('product_id', dbProduct.id)
-                .ilike('color', color)
-                .maybeSingle()
-
-              if (!dbVariant) continue
-
-              const newStock = Math.max(0, (dbVariant.stock_quantity || 0) - qty)
-              await supabase
-                .from('product_variants')
-                .update({ stock_quantity: newStock })
-                .eq('id', dbVariant.id)
-            } catch (itemErr) {
-              console.error('updateStatus: failed to deduct stock for item', item, itemErr)
-            }
+              await fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'deductStock', productId: pId, color, qty }),
+              })
+            } catch {}
           }
         }
       }
     }
+
+    // 5. Broadcast notification on status change so all connected devices are notified
+    try {
+      const targetQ = quotations.find(q => q.id === id)
+      let notifPayload: any = null
+      if (status === 'Admin Accepted' || status === 'Approved') {
+        notifPayload = {
+          type: 'quotation_approved',
+          targetRole: 'salesperson',
+          title: 'Quotation Approved',
+          message: `Admin approved quotation ${id} for ${targetQ?.customerName || 'Customer'}.`,
+          quotationId: id,
+          customerName: targetQ?.customerName,
+          salespersonName: targetQ?.salesperson,
+          link: '/quotations',
+        }
+      } else if (status === 'Rejected') {
+        notifPayload = {
+          type: 'quotation_rejected',
+          targetRole: 'salesperson',
+          title: 'Quotation Rejected',
+          message: `Admin rejected quotation ${id} for ${targetQ?.customerName || 'Customer'}.`,
+          quotationId: id,
+          customerName: targetQ?.customerName,
+          salespersonName: targetQ?.salesperson,
+          link: '/quotations',
+        }
+      } else if (status === 'Completed') {
+        notifPayload = {
+          type: 'quotation_completed',
+          targetRole: 'all',
+          title: 'Order Completed',
+          message: `Quotation ${id} for ${targetQ?.customerName || 'Customer'} was marked as Completed.`,
+          quotationId: id,
+          customerName: targetQ?.customerName,
+          salespersonName: targetQ?.salesperson,
+          link: '/quotations',
+        }
+      }
+
+      if (notifPayload) {
+        fetch('/api/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'add', notification: notifPayload }),
+        }).catch(() => {})
+      }
+    } catch {}
   }
 
   const deleteQuotation = async (id: string) => {
-    setQuotations(prev => prev.filter(q => q.id !== id))
-    localStorage.setItem('global_quotations_v2', JSON.stringify(quotations.filter(q => q.id !== id)))
+    setQuotations(prev => {
+      const updated = prev.filter(q => q.id !== id)
+      try {
+        localStorage.setItem('global_quotations_v2', JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
 
-    // Call server action to bypass missing DELETE RLS policy
-    await deleteQuotationInDB(id)
+    try {
+      await fetch('/api/quotations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id }),
+      })
+    } catch (e) {
+      console.error('Failed to delete quotation on server API:', e)
+    }
+
+    try {
+      await deleteQuotationInDB(id)
+    } catch {}
   }
 
   return (

@@ -26,6 +26,24 @@ export async function getCurrentUser() {
 }
 
 export async function getCurrentProfile(): Promise<UserProfile | null> {
+  // 1. Check demo_role cookie first for instant resolution
+  try {
+    const { cookies } = await import('next/headers')
+    const cookieStore = await cookies()
+    const demoCookie = cookieStore.get('demo_role')?.value as UserRole | undefined
+    if (demoCookie) {
+      const role: UserRole = demoCookie === 'admin' ? 'admin' : 'salesperson'
+      return {
+        id: 'demo-user-id',
+        full_name: role === 'admin' ? 'Abdul Khabeer' : 'Ahmad Al Rashid',
+        email: role === 'admin' ? 'admin@melamine.com' : 'sales@melamine.com',
+        role,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    }
+  } catch {}
+
   const supabase = await createClient()
   if (!supabase) return null
 

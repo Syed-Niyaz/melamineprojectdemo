@@ -1,166 +1,20 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { INITIAL_PRODUCTS, Product, ProductVariant } from '@/lib/initial-products'
 
-export type ProductVariant = {
-  id?: string
-  color: string
-  stock: number
-  sales?: number
-  image_url?: string
-}
-
-export type Product = {
-  id: string
-  name_en: string
-  name_ar: string
-  sku: string
-  category: string
-  price_bw: number
-  price_colored: number
-  image_color: string
-  base_image_url: string
-  image_url: string
-  expected?: string
-  variants: ProductVariant[]
-}
-
-const INITIAL_PRODUCTS: Product[] = [
-  {
-    id: '1',
-    name_en: 'Cup & Saucer Set',
-    name_ar: 'فنجان وصحن',
-    sku: 'CS-150',
-    category: 'Accessories',
-    price_bw: 14,
-    price_colored: 16.10,
-    image_color: 'bg-stone-100',
-    base_image_url: '/images/cup_saucer',
-    image_url: '/images/cup_saucer.png',
-    variants: [
-      { color: 'WHITE', stock: 45, sales: 120 },
-      { color: 'BLACK', stock: 12, sales: 50 },
-      { color: 'GOLDEN MARBLA', stock: 8, sales: 15 },
-      { color: 'WHITE MARBLE', stock: 24, sales: 42 },
-      { color: 'CREAM DOT', stock: 30, sales: 85 },
-      { color: 'BLACK MARBLE', stock: 5, sales: 10 },
-      { color: 'GRAY 1200', stock: 15, sales: 25 },
-    ]
-  },
-  {
-    id: '2',
-    name_en: 'Deep Plate 9"',
-    name_ar: 'طبق عميق 9 بوصة',
-    sku: 'DP-090',
-    category: 'Dinner Plates',
-    price_bw: 10,
-    price_colored: 11.50,
-    image_color: 'bg-[#F2EDE4]',
-    base_image_url: '/images/plate_white',
-    image_url: '/images/plate_white.png',
-    variants: [
-      { color: 'WHITE', stock: 50, sales: 210 },
-      { color: 'BLACK', stock: 5, sales: 80 },
-      { color: 'GOLDEN MARBLA', stock: 12, sales: 30 },
-      { color: 'WHITE MARBLE', stock: 18, sales: 65 },
-      { color: 'CREAM DOT', stock: 40, sales: 150 },
-      { color: 'BLACK MARBLE', stock: 2, sales: 15 },
-      { color: 'GRAY 1200', stock: 11, sales: 40 },
-    ]
-  },
-  {
-    id: '3',
-    name_en: 'Dinner Plate 11"',
-    name_ar: 'طبق عشاء 11 بوصة',
-    sku: 'DP-110',
-    category: 'Dinner Plates',
-    price_bw: 12.5,
-    price_colored: 14.37,
-    image_color: 'bg-zinc-800',
-    base_image_url: '/images/plate_black',
-    image_url: '/images/plate_black.png',
-    variants: [
-      { color: 'WHITE', stock: 10, sales: 180 },
-      { color: 'BLACK', stock: 20, sales: 120 },
-      { color: 'GOLDEN MARBLA', stock: 35, sales: 45 },
-      { color: 'WHITE MARBLE', stock: 8, sales: 70 },
-      { color: 'CREAM DOT', stock: 22, sales: 110 },
-      { color: 'BLACK MARBLE', stock: 14, sales: 20 },
-      { color: 'GRAY 1200', stock: 50, sales: 55 },
-    ]
-  },
-  {
-    id: '4',
-    name_en: 'Dinner Set Black',
-    name_ar: 'طقم عشاء',
-    sku: 'DNS-510',
-    category: 'Accessories',
-    price_bw: 95,
-    price_colored: 109.25,
-    image_color: 'bg-zinc-900',
-    base_image_url: '/images/dinner_set_black',
-    image_url: '/images/dinner_set_black.png',
-    variants: [
-      { color: 'WHITE', stock: 0, sales: 45 },
-      { color: 'BLACK', stock: 18, sales: 85 },
-      { color: 'GOLDEN MARBLA', stock: 2, sales: 10 },
-      { color: 'WHITE MARBLE', stock: 5, sales: 25 },
-      { color: 'CREAM DOT', stock: 12, sales: 30 },
-      { color: 'BLACK MARBLE', stock: 8, sales: 15 },
-      { color: 'GRAY 1200', stock: 20, sales: 40 },
-    ]
-  },
-  {
-    id: '5',
-    name_en: 'Leaf Platter 12"',
-    name_ar: 'طبق ورقة 12 بوصة',
-    sku: 'LP-360',
-    category: 'Platters',
-    price_bw: 32,
-    price_colored: 36.80,
-    expected: '20 Aug 2026',
-    image_color: 'bg-green-50',
-    base_image_url: '/images/serving_platter',
-    image_url: '/images/serving_platter.png',
-    variants: [
-      { color: 'WHITE', stock: 5, sales: 65 },
-      { color: 'BLACK', stock: 0, sales: 30 },
-      { color: 'GOLDEN MARBLA', stock: 2, sales: 5 },
-      { color: 'WHITE MARBLE', stock: 1, sales: 15 },
-      { color: 'CREAM DOT', stock: 8, sales: 40 },
-      { color: 'BLACK MARBLE', stock: 0, sales: 8 },
-      { color: 'GRAY 1200', stock: 4, sales: 12 },
-    ]
-  },
-  {
-    id: '6',
-    name_en: 'Soup Bowl',
-    name_ar: 'طبق شوربة',
-    sku: 'SB-200',
-    category: 'Bowls',
-    price_bw: 8.5,
-    price_colored: 9.77,
-    image_color: 'bg-amber-50',
-    base_image_url: '/images/soup_bowl',
-    image_url: '/images/soup_bowl.png',
-    variants: [
-      { color: 'WHITE', stock: 60, sales: 250 },
-      { color: 'BLACK', stock: 45, sales: 110 },
-      { color: 'GOLDEN MARBLA', stock: 20, sales: 40 },
-      { color: 'WHITE MARBLE', stock: 35, sales: 85 },
-      { color: 'CREAM DOT', stock: 55, sales: 190 },
-      { color: 'BLACK MARBLE', stock: 12, sales: 25 },
-      { color: 'GRAY 1200', stock: 30, sales: 60 },
-    ]
-  }
-]
+export type { Product, ProductVariant }
 
 type ProductContextType = {
   products: Product[]
   deductStock: (productId: string, color: string, qty: number) => Promise<void>
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>
   refreshProducts: () => Promise<void>
+  addProduct: (product: Product) => Promise<void>
+  updateProduct: (product: Product) => Promise<void>
+  deleteProduct: (productId: string) => Promise<void>
+  addVariant: (productId: string, variant: ProductVariant) => Promise<void>
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined)
@@ -169,7 +23,29 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS)
   const [isLoaded, setIsLoaded] = useState(false)
 
-  const fetchProductsFromSupabase = async () => {
+  // Fetch products from server-side persistent store (/api/products)
+  const fetchProductsFromServer = useCallback(async () => {
+    try {
+      const res = await fetch('/api/products')
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.products && Array.isArray(data.products) && data.products.length > 0) {
+          setProducts(data.products)
+          try {
+            localStorage.setItem('global_products_v2', JSON.stringify(data.products))
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching products from server API:', err)
+    }
+  }, [])
+
+  // Live Supabase fetch fallback (if Supabase is configured and reachable)
+  const fetchProductsFromSupabase = useCallback(async () => {
+    // First, sync from server API
+    await fetchProductsFromServer()
+
     const supabase = createClient()
     if (!supabase) return
 
@@ -193,7 +69,6 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
         `)
 
       if (error) {
-        // Fallback without product_variants(image_url) if column not in DB schema
         const fallbackRes = await supabase
           .from('products')
           .select(`
@@ -242,74 +117,185 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
                 ])
           }
         })
-        setProducts(formatted)
-        localStorage.setItem('global_products_v2', JSON.stringify(formatted))
+
+        // Merge with server/local custom products
+        let merged = formatted
+        try {
+          const currentLocal = JSON.parse(localStorage.getItem('global_products_v2') || '[]')
+          if (Array.isArray(currentLocal) && currentLocal.length > 0) {
+            const extraLocal = currentLocal.filter((lp: Product) =>
+              !formatted.some(fp => fp.id === lp.id || fp.sku === lp.sku)
+            )
+            merged = [...formatted, ...extraLocal]
+          }
+        } catch {}
+
+        setProducts(merged)
+        try {
+          localStorage.setItem('global_products_v2', JSON.stringify(merged))
+        } catch {}
       }
     } catch (err) {
       console.error('Error fetching products from Supabase:', err)
     }
-  }
+  }, [fetchProductsFromServer])
 
   useEffect(() => {
-    // Initial local cache load for instantaneous UI rendering
-    const saved = localStorage.getItem('global_products_v2') || localStorage.getItem('global_products_v1')
-    if (saved) {
-      try {
-        setProducts(JSON.parse(saved))
-      } catch {
-        setProducts(INITIAL_PRODUCTS)
+    // 1. Initial local cache load for instantaneous UI rendering
+    try {
+      const saved = localStorage.getItem('global_products_v2') || localStorage.getItem('global_products_v1')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProducts(parsed)
+        }
       }
-    }
+    } catch {}
     setIsLoaded(true)
 
-    // Live Supabase fetch
-    fetchProductsFromSupabase()
+    // 2. Fetch fresh products from server
+    fetchProductsFromServer()
 
-    // Realtime Supabase Listener for inventory and stock changes
-    const supabase = createClient()
-    if (!supabase) return
+    // 3. Poll server every 3 seconds so different devices (Admin PC vs Salesperson Laptop) stay in sync!
+    const pollInterval = setInterval(() => {
+      fetchProductsFromServer()
+    }, 3000)
 
-    const channel = supabase
-      .channel('realtime_products_stock')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'product_variants' },
-        (_payload: any) => {
-          fetchProductsFromSupabase()
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'products' },
-        (_payload: any) => {
-          fetchProductsFromSupabase()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
-
-  // Sync state across local tabs and components instantaneously
-  useEffect(() => {
-    const handleSync = () => {
-      const saved = localStorage.getItem('global_products_v2')
-      if (saved) {
-        try {
-          setProducts(JSON.parse(saved))
-        } catch (e) {}
+    // 4. Sync immediately when window is refocused or visible
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchProductsFromServer()
       }
+    }
+    window.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', handleVisibility)
+
+    // 5. Cross-tab sync in same browser
+    const handleSync = () => {
+      try {
+        const saved = localStorage.getItem('global_products_v2')
+        if (saved) {
+          setProducts(JSON.parse(saved))
+        }
+      } catch {}
     }
     window.addEventListener('storage', handleSync)
     window.addEventListener('stock_updated', handleSync)
+
     return () => {
+      clearInterval(pollInterval)
+      window.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleVisibility)
       window.removeEventListener('storage', handleSync)
       window.removeEventListener('stock_updated', handleSync)
     }
-  }, [])
+  }, [fetchProductsFromServer])
 
+  // Add a new product (updates state, localStorage, and saves to server persistent JSON)
+  const addProduct = async (product: Product) => {
+    setProducts(prev => {
+      const exists = prev.some(p => p.id === product.id || (product.sku && p.sku === product.sku))
+      const updated = exists ? prev.map(p => (p.id === product.id || p.sku === product.sku) ? product : p) : [product, ...prev]
+      try {
+        localStorage.setItem('global_products_v2', JSON.stringify(updated))
+        setTimeout(() => window.dispatchEvent(new Event('stock_updated')), 50)
+      } catch {}
+      return updated
+    })
+
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', product }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.products) {
+          setProducts(data.products)
+          try {
+            localStorage.setItem('global_products_v2', JSON.stringify(data.products))
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.error('Failed to save product to server API:', e)
+    }
+  }
+
+  // Update product details
+  const updateProduct = async (product: Product) => {
+    setProducts(prev => {
+      const updated = prev.map(p => p.id === product.id ? product : p)
+      try {
+        localStorage.setItem('global_products_v2', JSON.stringify(updated))
+        setTimeout(() => window.dispatchEvent(new Event('stock_updated')), 50)
+      } catch {}
+      return updated
+    })
+
+    try {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update', product }),
+      })
+    } catch (e) {
+      console.error('Failed to update product on server API:', e)
+    }
+  }
+
+  // Delete product
+  const deleteProduct = async (productId: string) => {
+    setProducts(prev => {
+      const updated = prev.filter(p => p.id !== productId)
+      try {
+        localStorage.setItem('global_products_v2', JSON.stringify(updated))
+        setTimeout(() => window.dispatchEvent(new Event('stock_updated')), 50)
+      } catch {}
+      return updated
+    })
+
+    try {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id: productId }),
+      })
+    } catch (e) {
+      console.error('Failed to delete product on server API:', e)
+    }
+  }
+
+  // Add variant to product
+  const addVariant = async (productId: string, variant: ProductVariant) => {
+    setProducts(prev => {
+      const updated = prev.map(p => {
+        if (p.id !== productId) return p
+        return {
+          ...p,
+          variants: [...p.variants.filter(v => v.color.toLowerCase() !== variant.color.toLowerCase()), variant],
+        }
+      })
+      try {
+        localStorage.setItem('global_products_v2', JSON.stringify(updated))
+        setTimeout(() => window.dispatchEvent(new Event('stock_updated')), 50)
+      } catch {}
+      return updated
+    })
+
+    try {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'addVariant', productId, variant }),
+      })
+    } catch (e) {
+      console.error('Failed to add variant on server API:', e)
+    }
+  }
+
+  // Deduct stock
   const deductStock = async (productId: string, color: string, qty: number) => {
     setProducts(prevProducts => {
       const updated = prevProducts.map(p => {
@@ -331,34 +317,35 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
           })
         }
       })
-      localStorage.setItem('global_products_v2', JSON.stringify(updated))
-      setTimeout(() => window.dispatchEvent(new Event('stock_updated')), 50)
+      try {
+        localStorage.setItem('global_products_v2', JSON.stringify(updated))
+        setTimeout(() => window.dispatchEvent(new Event('stock_updated')), 50)
+      } catch {}
       return updated
     })
 
-    const supabase = createClient()
-    if (supabase) {
-      try {
-        const targetProduct = products.find(p =>
-          String(p.id).toLowerCase() === String(productId).toLowerCase() ||
-          String(p.sku).toLowerCase() === String(productId).toLowerCase() ||
-          String(p.name_en).toLowerCase() === String(productId).toLowerCase()
-        )
-        const targetVariant = targetProduct?.variants.find(v =>
-          String(v.color).trim().toUpperCase() === String(color).trim().toUpperCase()
-        )
-        if (targetVariant?.id) {
-          const newStock = Math.max(0, targetVariant.stock - Number(qty))
-          await supabase.from('product_variants').update({ stock_quantity: newStock }).eq('id', targetVariant.id)
-        }
-      } catch (err) {
-        console.error('Failed to deduct stock in Supabase:', err)
-      }
+    try {
+      await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deductStock', productId, color, qty }),
+      })
+    } catch (e) {
+      console.error('Failed to deduct stock on server API:', e)
     }
   }
 
   return (
-    <ProductContext.Provider value={{ products, deductStock, setProducts, refreshProducts: fetchProductsFromSupabase }}>
+    <ProductContext.Provider value={{
+      products,
+      deductStock,
+      setProducts,
+      refreshProducts: fetchProductsFromSupabase,
+      addProduct,
+      updateProduct,
+      deleteProduct,
+      addVariant,
+    }}>
       {children}
     </ProductContext.Provider>
   )

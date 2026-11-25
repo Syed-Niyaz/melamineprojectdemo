@@ -1,0 +1,49 @@
+[
+  {
+    "id": "1",
+    "name": "Al Muhaidib Kitchens",
+    "contact_person": "Khalid Al Muhaidib",
+    "mobile_no": "+966 13 812 3456",
+    "email": "khalid@almuhaidib.com.sa",
+    "address": "King Fahd Road, Al Khobar 31952",
+    "vat_no": "310123456700003",
+    "cr_no": "1010123456789",
+    "orders": 12
+  },
+  {
+    "id": "2",
+    "name": "Raha Kitchen Solutions",
+    "contact_person": "Faisal Al Ghamdi",
+    "mobile_no": "+966 13 823 4567",
+    "email": "faisal@raha-kitchens.sa",
+    "address": "Dhahran St, Dammam",
+    "orders": 4
+  },
+  {
+    "id": "3",
+    "name": "Eastern Kitchens Factory",
+    "contact_person": "Omar Al Dossari",
+    "mobile_no": "+966 13 834 5678",
+    "email": "omar@eastern-kitchens.sa",
+    "address": "Industrial Area, Jubail",
+    "orders": 8
+  },
+  {
+    "id": "4",
+    "name": "Gulf Modular Kitchens",
+    "contact_person": "Sultan Al Harbi",
+    "mobile_no": "+966 13 845 6789",
+    "email": "sultan@gulfmodular.sa",
+    "address": "Prince Faisal St, Riyadh",
+    "orders": 3
+  },
+  {
+    "id": "5",
+    "name": "Al Jazeera Kitchen World",
+    "contact_person": "Mohammed Al Qahtani",
+    "mobile_no": "+966 13 856 7890",
+    "email": "mohammed@aljazeerakitchen.sa",
+    "address": "Olaya District, Riyadh",
+    "orders": 6
+  }
+]

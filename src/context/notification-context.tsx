@@ -96,26 +96,58 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [isLoaded, setIsLoaded] = useState(false)
 
-  // Load from local storage initially
-  useEffect(() => {
-    const loadData = () => {
-      const stored = localStorage.getItem('global_notifications_v2')
-      if (stored) {
-        try {
-          setNotifications(JSON.parse(stored))
-        } catch {
-          setNotifications(INITIAL_NOTIFICATIONS)
+  // Fetch notifications from server persistent store (/api/notifications)
+  const fetchNotificationsFromServer = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/notifications')
+      if (res.ok) {
+        const data = await res.json()
+        if (data?.notifications && Array.isArray(data.notifications) && data.notifications.length > 0) {
+          setNotifications(data.notifications)
+          try {
+            localStorage.setItem('global_notifications_v2', JSON.stringify(data.notifications))
+          } catch {}
         }
-      } else {
-        setNotifications(INITIAL_NOTIFICATIONS)
-        localStorage.setItem('global_notifications_v2', JSON.stringify(INITIAL_NOTIFICATIONS))
       }
-      setIsLoaded(true)
+    } catch (err) {
+      console.error('Error fetching notifications from server API:', err)
     }
+  }, [])
 
-    loadData()
+  // Initial load and polling
+  useEffect(() => {
+    // 1. Initial load from local storage
+    const stored = localStorage.getItem('global_notifications_v2')
+    if (stored) {
+      try {
+        setNotifications(JSON.parse(stored))
+      } catch {
+        setNotifications(INITIAL_NOTIFICATIONS)
+      }
+    } else {
+      setNotifications(INITIAL_NOTIFICATIONS)
+      localStorage.setItem('global_notifications_v2', JSON.stringify(INITIAL_NOTIFICATIONS))
+    }
+    setIsLoaded(true)
 
-    // Sync across tabs
+    // 2. Fetch fresh notifications from server
+    fetchNotificationsFromServer()
+
+    // 3. Poll server every 3 seconds so different devices (Admin PC vs Salesperson Laptop) stay in sync!
+    const pollInterval = setInterval(() => {
+      fetchNotificationsFromServer()
+    }, 3000)
+
+    // 4. Sync immediately when window is refocused or visible
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchNotificationsFromServer()
+      }
+    }
+    window.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', handleVisibility)
+
+    // 5. Sync across tabs
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'global_notifications_v2' && e.newValue) {
         try {
@@ -125,8 +157,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     window.addEventListener('storage', handleStorageChange)
-    return () => window.removeEventListener('storage', handleStorageChange)
-  }, [])
+    return () => {
+      clearInterval(pollInterval)
+      window.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleVisibility)
+      window.removeEventListener('storage', handleStorageChange)
+    }
+  }, [fetchNotificationsFromServer])
 
   // Sync to local storage
   useEffect(() => {
@@ -221,13 +258,26 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
       read: false,
     }
+    // 1. Optimistic UI update
     setNotifications(prev => [newNotif, ...prev])
+
+    // 2. Persist to server API so other devices receive it immediately!
+    fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', notification: newNotif }),
+    }).catch(err => console.error('Error saving notification to server API:', err))
   }
 
   const markAsRead = (id: string) => {
     setNotifications(prev =>
       prev.map(n => (n.id === id ? { ...n, read: true } : n))
     )
+    fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'markAsRead', id }),
+    }).catch(err => console.error('Error updating notification on server API:', err))
   }
 
   const markAllAsRead = (role: 'admin' | 'salesperson') => {
@@ -239,16 +289,31 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         return n
       })
     )
+    fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'markAllAsRead', role }),
+    }).catch(err => console.error('Error updating notifications on server API:', err))
   }
 
   const deleteNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id))
+    fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', id }),
+    }).catch(err => console.error('Error deleting notification on server API:', err))
   }
 
   const clearAll = (role: 'admin' | 'salesperson') => {
     setNotifications(prev =>
       prev.filter(n => n.targetRole !== role && n.targetRole !== 'all')
     )
+    fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clearAll', role }),
+    }).catch(err => console.error('Error clearing notifications on server API:', err))
   }
 
   const unreadCount = (role: 'admin' | 'salesperson') => {

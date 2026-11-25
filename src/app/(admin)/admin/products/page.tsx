@@ -21,7 +21,7 @@ const stockBadge: Record<string, string> = {
 
 export default function AdminProductsPage() {
   const { isRtl, lang } = useLang()
-  const { products, setProducts, refreshProducts } = useProducts() as any
+  const { products, setProducts, refreshProducts, addProduct, updateProduct, deleteProduct, addVariant } = useProducts() as any
   const router = useRouter()
   
   const [search, setSearch] = useState('')
@@ -251,42 +251,70 @@ export default function AdminProductsPage() {
                   return;
                 }
 
+                const imageUrl = newProductImage || ('https://placehold.co/400x400/f5f0eb/8b7355?text=' + encodeURIComponent(name_en))
+
+                // Build the new product object for local state
+                const newProduct = {
+                  id: 'local-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
+                  name_en,
+                  name_ar,
+                  sku,
+                  category,
+                  price_bw: price,
+                  price_colored: priceColored,
+                  image_color: 'bg-slate-100',
+                  base_image_url: imageUrl,
+                  image_url: imageUrl,
+                  expected: delivery || undefined,
+                  variants: [
+                    { color, stock, sales: 0 }
+                  ],
+                }
+
+                // Try Supabase first (for when it's available)
                 const supabase = createClient()
+                let supabaseSuccess = false
                 
-                // 1. Insert product
-                const { data: productData, error: productError } = await supabase
-                  .from('products')
-                  .insert({
-                    item_no: sku,
-                    description: name_en,
-                    arabic_description: name_ar,
-                    category: category,
-                    unit_price: price,
-                    image_url: newProductImage || ('https://placehold.co/400x400/f5f0eb/8b7355?text=' + encodeURIComponent(name_en)),
-                  })
-                  .select()
-                  .single()
+                if (supabase) {
+                  try {
+                    const { data: productData, error: productError } = await supabase
+                      .from('products')
+                      .insert({
+                        item_no: sku,
+                        description: name_en,
+                        arabic_description: name_ar,
+                        category: category,
+                        unit_price: price,
+                        image_url: imageUrl,
+                      })
+                      .select()
+                      .single()
 
-                if (productError) {
-                  alert('Failed to add product: ' + productError.message);
-                  return;
+                    if (!productError && productData) {
+                      await supabase
+                        .from('product_variants')
+                        .insert({
+                          product_id: productData.id,
+                          color: color,
+                          stock_quantity: stock
+                        })
+                      
+                      // Use the Supabase-assigned ID
+                      newProduct.id = productData.id
+                      supabaseSuccess = true
+                    }
+                  } catch {
+                    // Supabase unreachable — fall through to local-only add
+                  }
                 }
 
-                // 2. Insert variant
-                const { error: variantError } = await supabase
-                  .from('product_variants')
-                  .insert({
-                    product_id: productData.id,
-                    color: color,
-                    stock_quantity: stock
-                  })
+                // Always add to local state + localStorage so it's visible in all sessions
+                addProduct(newProduct)
 
-                if (variantError) {
-                  alert('Failed to add variant: ' + variantError.message);
-                  return;
+                if (supabaseSuccess) {
+                  await refreshProducts()
                 }
-                
-                await refreshProducts();
+
                 setIsAddingProduct(false);
                 setNewProductImage('');
               }}>
@@ -363,8 +391,6 @@ export default function AdminProductsPage() {
               <Button className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm px-6" onClick={async () => {
                 const color = (document.getElementById('variant-color') as HTMLSelectElement)?.value || '';
                 const stock = parseInt((document.getElementById('variant-stock') as HTMLInputElement)?.value || '0');
-                const priceBwVal = (document.getElementById('variant-price-bw') as HTMLInputElement)?.value;
-                const priceColoredVal = (document.getElementById('variant-price-colored') as HTMLInputElement)?.value;
                 const delivery = (document.getElementById('variant-delivery') as HTMLInputElement)?.value;
                 
                 if (!color) {
@@ -377,33 +403,28 @@ export default function AdminProductsPage() {
                   return;
                 }
 
+                // Add variant to local state, localStorage, and server API
+                if (addVariant) {
+                  await addVariant(addVariantProduct.id, { color, stock, sales: 0, image_url: newVariantImage || undefined })
+                }
+
+                // Also try Supabase (best-effort)
                 const supabase = createClient()
-                let { error: variantError } = await supabase
-                  .from('product_variants')
-                  .insert({
-                    product_id: addVariantProduct.id,
-                    color: color,
-                    stock_quantity: stock,
-                    image_url: newVariantImage || null,
-                  })
-
-                if (variantError) {
-                  const fallbackRes = await supabase
-                    .from('product_variants')
-                    .insert({
-                      product_id: addVariantProduct.id,
-                      color: color,
-                      stock_quantity: stock,
-                    })
-                  variantError = fallbackRes.error
+                if (supabase) {
+                  try {
+                    await supabase
+                      .from('product_variants')
+                      .insert({
+                        product_id: addVariantProduct.id,
+                        color: color,
+                        stock_quantity: stock,
+                        image_url: newVariantImage || null,
+                      })
+                  } catch {
+                    // Supabase unreachable — local-only is fine
+                  }
                 }
 
-                if (variantError) {
-                  alert('Failed to add variant: ' + variantError.message);
-                  return;
-                }
-                
-                if (refreshProducts) await refreshProducts();
                 setAddVariantProduct(null);
                 setNewVariantImage('');
               }}>
@@ -507,36 +528,42 @@ export default function AdminProductsPage() {
                   const priceBwInput = document.getElementById('edit-price-bw') as HTMLInputElement;
                   const newPriceBw = priceBwInput ? parseFloat(priceBwInput.value) : editProduct.price_bw;
 
-                  const supabase = createClient()
-                  
-                  // Update product base details (price)
-                  const { error: prodError } = await supabase
-                    .from('products')
-                    .update({ unit_price: newPriceBw })
-                    .eq('id', editProduct.id)
-
-                  if (prodError) {
-                    alert('Failed to update product: ' + prodError.message)
-                    return
+                  // Update local state, localStorage, and server API
+                  const parentProduct = products.find((p: Product) => p.id === editProduct.id)
+                  if (parentProduct && updateProduct) {
+                    const updatedProduct = {
+                      ...parentProduct,
+                      price_bw: newPriceBw,
+                      price_colored: Number((newPriceBw * 1.15).toFixed(2)),
+                      variants: parentProduct.variants.map((v: any) => 
+                        v.color === editProduct.variantColor ? { ...v, stock: newQty } : v
+                      )
+                    }
+                    await updateProduct(updatedProduct)
                   }
 
-                  // Find variant id by color
-                  const parentProduct = products.find((p: Product) => p.id === editProduct.id)
-                  const variant = parentProduct?.variants.find((v: any) => v.color === editProduct.variantColor)
-                  
-                  if (variant?.id) {
-                    const { error: varError } = await supabase
-                      .from('product_variants')
-                      .update({ stock_quantity: newQty })
-                      .eq('id', variant.id)
+                  // Also try Supabase (best-effort)
+                  const supabase = createClient()
+                  if (supabase) {
+                    try {
+                      await supabase
+                        .from('products')
+                        .update({ unit_price: newPriceBw })
+                        .eq('id', editProduct.id)
 
-                    if (varError) {
-                      alert('Failed to update variant: ' + varError.message)
-                      return
+                      const parentProduct = products.find((p: Product) => p.id === editProduct.id)
+                      const variant = parentProduct?.variants.find((v: any) => v.color === editProduct.variantColor)
+                      
+                      if (variant?.id) {
+                        await supabase
+                          .from('product_variants')
+                          .update({ stock_quantity: newQty })
+                          .eq('id', variant.id)
+                      }
+                    } catch {
+                      // Supabase unreachable — local update is sufficient
                     }
                   }
-
-                  await refreshProducts()
                 }
                 setEditProduct(null)
               }}>
