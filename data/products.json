@@ -1,5 +1,24 @@
 [
   {
+    "id": "local-1795600692175-nxlq4n",
+    "name_en": "scscsd",
+    "name_ar": "scs",
+    "sku": "scsdc",
+    "category": "Dinner Plates",
+    "price_bw": 6,
+    "price_colored": 5,
+    "image_color": "bg-slate-100",
+    "base_image_url": "https://yvpbeqdmhpjqlteaplvj.supabase.co/storage/v1/object/public/product-images/products/1795600689761_7cqcec1g3fo.png",
+    "image_url": "https://yvpbeqdmhpjqlteaplvj.supabase.co/storage/v1/object/public/product-images/products/1795600689761_7cqcec1g3fo.png",
+    "variants": [
+      {
+        "color": "GOLDEN MARBLA",
+        "stock": 9,
+        "sales": 0
+      }
+    ]
+  },
+  {
     "id": "local-1795501867568-3dm53r",
     "name_en": "NIyaz",
     "name_ar": "sdcsc",
