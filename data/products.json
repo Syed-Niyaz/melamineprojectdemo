@@ -1,5 +1,24 @@
 [
   {
+    "id": "local-1795614858122-50pa9n",
+    "name_en": "Test Melamine Plate",
+    "name_ar": "طبق ميلامين تجريبي",
+    "sku": "TEST-999",
+    "category": "Dinner Plates",
+    "price_bw": 45,
+    "price_colored": 45,
+    "image_color": "bg-slate-100",
+    "base_image_url": "https://placehold.co/400x400/f5f0eb/8b7355?text=Test%20Melamine%20Plate",
+    "image_url": "https://placehold.co/400x400/f5f0eb/8b7355?text=Test%20Melamine%20Plate",
+    "variants": [
+      {
+        "color": "WHITE",
+        "stock": 100,
+        "sales": 0
+      }
+    ]
+  },
+  {
     "id": "local-1795600692175-nxlq4n",
     "name_en": "scscsd",
     "name_ar": "scs",

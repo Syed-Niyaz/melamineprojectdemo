@@ -207,7 +207,15 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 13. RLS Policies
+-- 13. GRANT privileges to Supabase API roles (required — new projects do not auto-grant)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticated, service_role;
+
+-- 14. RLS Policies
 
 -- Profiles Policies
 DROP POLICY IF EXISTS "Profiles viewable by authenticated users" ON public.profiles;
@@ -299,6 +307,12 @@ CREATE POLICY "Users can update own draft or admin all quotations"
     (salesperson_id = auth.uid() AND status = 'Draft')
     OR public.is_admin()
   );
+
+DROP POLICY IF EXISTS "Admin can delete any quotation" ON public.quotations;
+CREATE POLICY "Admin can delete any quotation"
+  ON public.quotations FOR DELETE
+  TO authenticated
+  USING (public.is_admin() OR salesperson_id = auth.uid());
 
 -- Quotation Items Policies
 DROP POLICY IF EXISTS "Quotation items viewable by authorized quotation viewers" ON public.quotation_items;
@@ -405,4 +419,12 @@ DO $$ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.product_variants;
 EXCEPTION WHEN OTHERS THEN null;
 END $$;
+
+-- 15. Grant table privileges (required on new Supabase projects; run after schema creation)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticated, service_role;
 

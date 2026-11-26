@@ -101,173 +101,180 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const fetchQuotationsFromSupabase = useCallback(async () => {
-    await fetchQuotationsFromServer()
-
+    // Always fetch from Supabase DB first — it is the cross-device source of truth
     const supabase = createClient()
-    if (!supabase) return
 
-    try {
-      const { data: dbQuotations, error } = await supabase
-        .from('quotations')
-        .select(`
-          id,
-          quotation_number,
-          customer_id,
-          salesperson_id,
-          status,
-          subtotal,
-          discount_total,
-          net_amount,
-          vat_amount,
-          grand_total,
-          payment_terms,
-          delivery_terms,
-          remarks,
-          created_at,
-          customers (
+    if (supabase) {
+      try {
+        const { data: dbQuotations, error } = await supabase
+          .from('quotations')
+          .select(`
             id,
-            name,
-            mobile_no,
-            email,
-            address
-          ),
-          profiles (
-            id,
-            full_name,
-            email
-          ),
-          quotation_items (
-            id,
-            product_variant_id,
-            quantity,
-            unit_price_snapshot,
-            discount_percentage,
-            discount_amount,
-            line_amount,
-            product_variants (
+            quotation_number,
+            customer_id,
+            salesperson_id,
+            status,
+            subtotal,
+            discount_total,
+            net_amount,
+            vat_amount,
+            grand_total,
+            payment_terms,
+            delivery_terms,
+            remarks,
+            created_at,
+            customers (
               id,
-              color,
-              products (
+              name,
+              mobile_no,
+              email,
+              address
+            ),
+            profiles (
+              id,
+              full_name,
+              email
+            ),
+            quotation_items (
+              id,
+              product_variant_id,
+              quantity,
+              unit_price_snapshot,
+              discount_percentage,
+              discount_amount,
+              line_amount,
+              product_variants (
                 id,
-                item_no,
-                description,
-                arabic_description
+                color,
+                products (
+                  id,
+                  item_no,
+                  description,
+                  arabic_description
+                )
               )
             )
-          )
-        `)
-        .order('created_at', { ascending: false })
+          `)
+          .order('created_at', { ascending: false })
 
-      if (dbQuotations && !error && dbQuotations.length > 0) {
-        const formatted: Quotation[] = dbQuotations.map((q: any) => {
-          const qNumber = q.quotation_number ? `QT-${1000 + q.quotation_number}` : q.id.substring(0, 8).toUpperCase()
-          const cust = q.customers || {}
-          const customerObj = {
-            id: cust.id || q.customer_id,
-            name: cust.name || 'Customer',
-            contact_person: cust.name || 'Customer',
-            contact: cust.name || 'Customer',
-            mobile_no: cust.mobile_no || '',
-            email: cust.email || '',
-            address: cust.address || '',
-            vat_no: '',
-            cr_no: '',
-            orders: 0
-          }
-
-          const rawItems = q.quotation_items || []
-          const mappedItems = rawItems.map((item: any) => {
-            const variant = item.product_variants || {}
-            const prod = variant.products || {}
-            const unitPrice = Number(item.unit_price_snapshot) || Number(prod.unit_price) || 0
-            const qty = Number(item.quantity) || 1
-            const discPct = Number(item.discount_percentage) || 0
-            const discAmt = Number(item.discount_amount) || (unitPrice * qty * (discPct / 100))
-            const lineAmt = Number(item.line_amount) || (unitPrice * qty - discAmt)
-            const colorName = variant.color || 'WHITE'
-            const isBW = colorName.toUpperCase() === 'BLACK' || colorName.toUpperCase() === 'WHITE'
-            const priceBw = unitPrice
-            const priceCol = Number((unitPrice * 1.15).toFixed(2))
-
-            return {
-              id: item.id,
-              productId: prod.id || variant.id,
-              productName: prod.description || 'Product',
-              color: colorName,
-              quantity: qty,
-              unitPrice: unitPrice,
-              unit_price_snapshot: unitPrice,
-              discount_percentage: discPct,
-              discount_amount: discAmt,
-              line_amount: lineAmt,
-              product: {
-                id: prod.id || variant.id,
-                name_en: prod.description || 'Product',
-                name_ar: prod.arabic_description || prod.description || 'منتج',
-                sku: prod.item_no || 'SKU',
-                category: 'General',
-                price_bw: priceBw,
-                price_colored: priceCol,
-                image_color: 'bg-slate-100',
-                base_image_url: '/images/cup_saucer',
-                image_url: '/images/cup_saucer.png',
-                variants: [
-                  { color: colorName, stock: 100, sales: 0 }
-                ]
+        if (!error && dbQuotations) {
+          if (dbQuotations.length > 0) {
+            const formatted: Quotation[] = dbQuotations.map((q: any) => {
+              const qNumber = q.quotation_number ? `QT-${1000 + q.quotation_number}` : q.id.substring(0, 8).toUpperCase()
+              const cust = q.customers || {}
+              const customerObj = {
+                id: cust.id || q.customer_id,
+                name: cust.name || 'Customer',
+                contact_person: cust.name || 'Customer',
+                contact: cust.name || 'Customer',
+                mobile_no: cust.mobile_no || '',
+                email: cust.email || '',
+                address: cust.address || '',
+                vat_no: '',
+                cr_no: '',
+                orders: 0
               }
-            }
-          })
 
-          const maxItemDiscount = mappedItems.length > 0
-            ? Math.max(...mappedItems.map((it: any) => Number(it.discount_percentage) || 0))
-            : 0
+              const rawItems = q.quotation_items || []
+              const mappedItems = rawItems.map((item: any) => {
+                const variant = item.product_variants || {}
+                const prod = variant.products || {}
+                const unitPrice = Number(item.unit_price_snapshot) || Number(prod.unit_price) || 0
+                const qty = Number(item.quantity) || 1
+                const discPct = Number(item.discount_percentage) || 0
+                const discAmt = Number(item.discount_amount) || (unitPrice * qty * (discPct / 100))
+                const lineAmt = Number(item.line_amount) || (unitPrice * qty - discAmt)
+                const colorName = variant.color || 'WHITE'
+                const isBW = colorName.toUpperCase() === 'BLACK' || colorName.toUpperCase() === 'WHITE'
+                const priceBw = unitPrice
+                const priceCol = Number((unitPrice * 1.15).toFixed(2))
 
-          return {
-            id: qNumber,
-            customer_id: q.customer_id,
-            customerName: cust.name || 'Customer',
-            customer: customerObj,
-            salesperson_id: q.salesperson_id,
-            salesperson: q.profiles?.full_name || 'Ahmad Al Rashid',
-            date: q.created_at ? new Date(q.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-            discount: maxItemDiscount,
-            discount_total: Number(q.discount_total) || 0,
-            subtotal: Number(q.subtotal) || 0,
-            vat_amount: Number(q.vat_amount) || 0,
-            grandTotal: Number(q.grand_total) || 0,
-            status: q.status || 'Draft',
-            remarks: q.remarks || '',
-            paymentTerms: q.payment_terms || 'Payment within 30 days',
-            deliveryTerms: q.delivery_terms || 'Standard Delivery',
-            created_at: q.created_at,
-            items: mappedItems,
+                return {
+                  id: item.id,
+                  productId: prod.id || variant.id,
+                  productName: prod.description || 'Product',
+                  color: colorName,
+                  quantity: qty,
+                  unitPrice: unitPrice,
+                  unit_price_snapshot: unitPrice,
+                  discount_percentage: discPct,
+                  discount_amount: discAmt,
+                  line_amount: lineAmt,
+                  product: {
+                    id: prod.id || variant.id,
+                    name_en: prod.description || 'Product',
+                    name_ar: prod.arabic_description || prod.description || 'منتج',
+                    sku: prod.item_no || 'SKU',
+                    category: 'General',
+                    price_bw: priceBw,
+                    price_colored: priceCol,
+                    image_color: 'bg-slate-100',
+                    base_image_url: '/images/cup_saucer',
+                    image_url: '/images/cup_saucer.png',
+                    variants: [
+                      { color: colorName, stock: 100, sales: 0 }
+                    ]
+                  }
+                }
+              })
+
+              const maxItemDiscount = mappedItems.length > 0
+                ? Math.max(...mappedItems.map((it: any) => Number(it.discount_percentage) || 0))
+                : 0
+
+              return {
+                id: qNumber,
+                customer_id: q.customer_id,
+                customerName: cust.name || 'Customer',
+                customer: customerObj,
+                salesperson_id: q.salesperson_id,
+                salesperson: q.profiles?.full_name || 'Ahmad Al Rashid',
+                date: q.created_at ? new Date(q.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                discount: maxItemDiscount,
+                discount_total: Number(q.discount_total) || 0,
+                subtotal: Number(q.subtotal) || 0,
+                vat_amount: Number(q.vat_amount) || 0,
+                grandTotal: Number(q.grand_total) || 0,
+                status: q.status || 'Draft',
+                remarks: q.remarks || '',
+                paymentTerms: q.payment_terms || 'Payment within 30 days',
+                deliveryTerms: q.delivery_terms || 'Standard Delivery',
+                created_at: q.created_at,
+                items: mappedItems,
+              }
+            })
+
+            // Merge: Supabase DB rows take precedence over local-only entries
+            let merged = formatted
+            try {
+              const currentLocal = JSON.parse(localStorage.getItem('global_quotations_v2') || '[]')
+              if (Array.isArray(currentLocal) && currentLocal.length > 0) {
+                // Keep local-only quotations (not in DB) for offline/demo entries
+                const extraLocal = currentLocal.filter((lq: Quotation) =>
+                  !formatted.some(fq => fq.id === lq.id)
+                )
+                merged = [...formatted, ...extraLocal]
+              }
+            } catch {}
+
+            setQuotations(merged)
+            try {
+              localStorage.setItem('global_quotations_v2', JSON.stringify(merged))
+            } catch {}
+            return // Successfully loaded from Supabase — skip local JSON fallback
           }
-        })
-
-        // Merge DB quotations with server/local custom quotations
-        let merged = formatted
-        try {
-          const currentLocal = JSON.parse(localStorage.getItem('global_quotations_v2') || '[]')
-          if (Array.isArray(currentLocal) && currentLocal.length > 0) {
-            const extraLocal = currentLocal.filter((lq: Quotation) =>
-              !formatted.some(fq => fq.id === lq.id)
-            )
-            merged = [...formatted, ...extraLocal]
-          }
-        } catch {}
-
-        setQuotations(merged)
-        try {
-          localStorage.setItem('global_quotations_v2', JSON.stringify(merged))
-        } catch {}
+        }
+      } catch (err) {
+        console.error('Error fetching quotations from Supabase:', err)
       }
-    } catch (err) {
-      console.error('Error fetching quotations from Supabase:', err)
     }
+
+    // Fallback: fetch from local server JSON (demo mode / no Supabase session)
+    await fetchQuotationsFromServer()
   }, [fetchQuotationsFromServer])
 
   useEffect(() => {
-    // 1. Initial load from local storage
+    // 1. Initial load from local storage (instant render)
     try {
       const stored = localStorage.getItem('global_quotations_v2')
       if (stored) {
@@ -279,18 +286,19 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
     } catch {}
     setIsLoaded(true)
 
-    // 2. Fetch fresh from server
-    fetchQuotationsFromServer()
+    // 2. Immediately fetch from BOTH server JSON and Supabase DB on mount
+    fetchQuotationsFromSupabase()
 
-    // 3. Poll server every 3 seconds so different devices (Admin PC vs Salesperson Laptop) stay in sync!
+    // 3. Poll Supabase DB every 5 seconds so Admin always sees Salesperson quotations
+    //    (Supabase is the source of truth — works across devices, tabs, and Vercel deployments)
     const pollInterval = setInterval(() => {
-      fetchQuotationsFromServer()
-    }, 3000)
+      fetchQuotationsFromSupabase()
+    }, 5000)
 
     // 4. Sync immediately when window is refocused or visible
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        fetchQuotationsFromServer()
+        fetchQuotationsFromSupabase()
       }
     }
     window.addEventListener('visibilitychange', handleVisibility)
@@ -313,7 +321,7 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('focus', handleVisibility)
       window.removeEventListener('storage', handleSync)
     }
-  }, [fetchQuotationsFromServer])
+  }, [fetchQuotationsFromSupabase])
 
   const addQuotation = async (q: Quotation) => {
     // 1. Optimistic UI state update
@@ -346,14 +354,16 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
       console.error('Failed to save quotation to server API:', e)
     }
 
-    // 3. Best-effort Supabase sync (does NOT block or crash if offline/demo)
+    // 3. Best-effort Supabase sync — required so Admin can see ALL quotations cross-device
     const supabase = createClient()
     if (!supabase) return
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
-        // In demo/offline mode, no cloud user is authenticated — this is normal!
+        // Not authenticated with Supabase — quotation saved locally only (demo mode)
+        // Trigger a refresh so any Supabase-sourced quotations are still shown
+        setTimeout(() => fetchQuotationsFromSupabase(), 1000)
         return
       }
 
@@ -482,9 +492,11 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
       console.error('Failed to update quotation status on server API:', e)
     }
 
-    // 3. Call server action for Supabase DB
+    // 3. Call server action for Supabase DB, then refresh from DB so both sides are in sync
     try {
       await updateQuotationStatusInDB(id, status)
+      // Re-fetch from Supabase so the latest DB state is reflected immediately
+      setTimeout(() => fetchQuotationsFromSupabase(), 500)
     } catch {}
 
     // 4. Deduct stock when Quotation is Completed
