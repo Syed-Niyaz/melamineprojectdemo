@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { updateQuotationStatusInDB, deleteQuotationInDB } from '@/app/actions/quotation-actions'
+import { updateQuotationStatusInDB, deleteQuotationInDB, saveQuotationToDB } from '@/app/actions/quotation-actions'
 
 export type QuotationItem = {
   id?: string
@@ -354,120 +354,19 @@ export function QuotationProvider({ children }: { children: ReactNode }) {
       console.error('Failed to save quotation to server API:', e)
     }
 
-    // 3. Best-effort Supabase sync — required so Admin can see ALL quotations cross-device
-    const supabase = createClient()
-    if (!supabase) return
-
+    // 3. Reliable Server Action Sync to Supabase
+    // Uses service role to ensure all quotations are immediately saved and visible to Admin,
+    // regardless of whether the user signed in with demo cookie or Supabase auth.
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        // Not authenticated with Supabase — quotation saved locally only (demo mode)
-        // Trigger a refresh so any Supabase-sourced quotations are still shown
-        setTimeout(() => fetchQuotationsFromSupabase(), 1000)
-        return
+      const dbResult = await saveQuotationToDB(q)
+      if (dbResult?.success) {
+        // Re-fetch so Supabase quotation number and UUID are reflected
+        setTimeout(() => fetchQuotationsFromSupabase(), 800)
+      } else {
+        console.warn('saveQuotationToDB note:', dbResult?.error)
       }
-
-      // Find or create customer UUID in Supabase
-      let customerUuid = q.customer_id
-      if (!customerUuid || customerUuid.length < 10) {
-        const { data: foundCust } = await supabase
-          .from('customers')
-          .select('id')
-          .ilike('name', `%${q.customerName}%`)
-          .maybeSingle()
-
-        if (foundCust) {
-          customerUuid = foundCust.id
-        } else {
-          const { data: newCust } = await supabase.from('customers').insert({
-            name: q.customerName,
-            created_by: user.id,
-          }).select('id').single()
-          customerUuid = newCust?.id
-        }
-      }
-
-      if (!customerUuid) return
-
-      const maxDiscountPct = q.discount || 0
-      const discountSarAmount = q.discount_total || 0
-
-      const { data: insertedQuotation } = await supabase.from('quotations').insert({
-        customer_id: customerUuid,
-        salesperson_id: user.id,
-        status: q.status || 'Draft',
-        subtotal: q.subtotal || 0,
-        discount_total: discountSarAmount,
-        net_amount: q.grandTotal / 1.15,
-        vat_rate: 15.00,
-        vat_amount: q.vat_amount || (q.grandTotal - q.grandTotal / 1.15),
-        grand_total: q.grandTotal,
-        payment_terms: q.paymentTerms,
-        delivery_terms: q.deliveryTerms,
-        remarks: q.remarks,
-      }).select('id, quotation_number').single()
-
-      if (!insertedQuotation) return
-
-      // Insert quotation_items if available
-      if (q.items && q.items.length > 0) {
-        for (const item of q.items) {
-          try {
-            const product = item.product || ({} as any)
-            const color = (item.color || product.variants?.[0]?.color || 'WHITE').toUpperCase()
-            const isBW = color === 'BLACK' || color === 'WHITE'
-            const unitPrice = item.unitPrice || item.unit_price_snapshot || (isBW ? product.price_bw : product.price_colored) || 0
-            const qty = item.qty || item.quantity || 1
-            const discountPct = Number(item.discount || item.discount_percentage || 0)
-            const discountAmt = unitPrice * qty * (discountPct / 100)
-            const lineAmount = item.line_amount || (unitPrice * qty - discountAmt)
-
-            let variantId: string | null = null
-            const productSku = product.sku || product.item_no || ''
-            if (productSku) {
-              const { data: dbProduct } = await supabase
-                .from('products')
-                .select('id')
-                .eq('item_no', productSku)
-                .maybeSingle()
-
-              if (dbProduct) {
-                const { data: dbVariant } = await supabase
-                  .from('product_variants')
-                  .select('id')
-                  .eq('product_id', dbProduct.id)
-                  .ilike('color', color)
-                  .maybeSingle()
-
-                if (dbVariant) {
-                  variantId = dbVariant.id
-                }
-              }
-            }
-
-            if (variantId) {
-              await supabase.from('quotation_items').insert({
-                quotation_id: insertedQuotation.id,
-                product_variant_id: variantId,
-                quantity: qty,
-                unit_price_snapshot: unitPrice,
-                discount_percentage: discountPct,
-                discount_amount: discountAmt,
-                line_amount: lineAmount,
-              })
-            }
-          } catch {}
-        }
-      }
-
-      if (q.status === 'Pending Approval' || maxDiscountPct > 25) {
-        await supabase.from('discount_approvals').insert({
-          quotation_id: insertedQuotation.id,
-          status: 'Pending',
-        })
-      }
-    } catch (err) {
-      console.error('addQuotation: background sync error', err)
+    } catch (dbErr) {
+      console.error('Failed to sync quotation to Supabase via server action:', dbErr)
     }
   }
 
